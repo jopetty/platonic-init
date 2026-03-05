@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Iterable
 
 from datasets import Dataset, load_dataset
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from .config import InitEvalDataConfig
 
 
 TEXT_FIELD = "text"
+
+_PAD_TOKEN = "<pad>"
+_UNK_TOKEN = "<unk>"
+_BOS_TOKEN = "<bos>"
+_EOS_TOKEN = "<eos>"
 
 
 def load_text_dataset(data_path: str) -> Dataset:
@@ -26,6 +33,86 @@ def build_tokenizer(model_name_or_path: str):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
+
+
+class CharTokenizer(PreTrainedTokenizer):
+    model_input_names = ["input_ids", "attention_mask"]
+
+    def __init__(self, vocab: dict[str, int], **kwargs):
+        self.vocab = dict(vocab)
+        self.ids_to_tokens = {v: k for k, v in self.vocab.items()}
+        super().__init__(
+            pad_token=_PAD_TOKEN,
+            unk_token=_UNK_TOKEN,
+            bos_token=_BOS_TOKEN,
+            eos_token=_EOS_TOKEN,
+            **kwargs,
+        )
+
+    @property
+    def vocab_size(self) -> int:
+        return len(self.vocab)
+
+    def get_vocab(self) -> dict[str, int]:
+        return dict(self.vocab)
+
+    def _tokenize(self, text: str) -> list[str]:
+        return list(text)
+
+    def _convert_token_to_id(self, token: str) -> int:
+        return self.vocab.get(token, self.vocab[self.unk_token])
+
+    def _convert_id_to_token(self, index: int) -> str:
+        return self.ids_to_tokens.get(index, self.unk_token)
+
+    def build_inputs_with_special_tokens(self, token_ids_0: list[int], token_ids_1: list[int] | None = None):
+        if token_ids_1 is not None:
+            return [self.bos_token_id] + token_ids_0 + [self.eos_token_id] + token_ids_1 + [self.eos_token_id]
+        return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
+
+    def create_token_type_ids_from_sequences(
+        self, token_ids_0: list[int], token_ids_1: list[int] | None = None
+    ) -> list[int]:
+        if token_ids_1 is not None:
+            return [0] * (len(token_ids_0) + len(token_ids_1) + 3)
+        return [0] * (len(token_ids_0) + 2)
+
+    def save_vocabulary(self, save_directory: str, filename_prefix: str | None = None) -> tuple[str]:
+        path = Path(save_directory)
+        path.mkdir(parents=True, exist_ok=True)
+        name = "char_vocab.json" if filename_prefix is None else f"{filename_prefix}-char_vocab.json"
+        out_path = path / name
+        out_path.write_text(json.dumps(self.vocab, indent=2), encoding="utf-8")
+        return (str(out_path),)
+
+
+def _iter_text_chars(text_path: str | Path) -> Iterable[str]:
+    with Path(text_path).open("r", encoding="utf-8") as f:
+        for line in f:
+            for ch in line.rstrip("\n"):
+                yield ch
+
+
+def build_char_tokenizer_from_text(text_path: str | Path) -> CharTokenizer:
+    vocab = {
+        _PAD_TOKEN: 0,
+        _UNK_TOKEN: 1,
+        _BOS_TOKEN: 2,
+        _EOS_TOKEN: 3,
+    }
+    for ch in sorted(set(_iter_text_chars(text_path))):
+        if ch not in vocab:
+            vocab[ch] = len(vocab)
+    return CharTokenizer(vocab=vocab)
+
+
+def load_saved_tokenizer(path: str | Path):
+    p = Path(path)
+    vocab_path = p / "char_vocab.json"
+    if vocab_path.exists():
+        vocab = json.loads(vocab_path.read_text(encoding="utf-8"))
+        return CharTokenizer(vocab=vocab)
+    return build_tokenizer(str(p))
 
 
 def tokenize_for_clm(ds: Dataset, tokenizer, block_size: int) -> Dataset:

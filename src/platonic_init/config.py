@@ -11,7 +11,8 @@ import yaml
 class TrainingConfig:
     model_name_or_path: str = "gpt2"
     block_size: int = 128
-    max_steps: int = 300
+    # If null, pre-pretraining trains for one full pass over the dataset.
+    max_steps: int | None = None
     per_device_train_batch_size: int = 8
     gradient_accumulation_steps: int = 1
     learning_rate: float = 3e-4
@@ -19,6 +20,8 @@ class TrainingConfig:
     weight_decay: float = 0.01
     save_steps: int = 100
     logging_steps: int = 10
+    pretrain_packing: bool = True
+    prepretrain_char_tokenizer: bool = True
     bf16: bool = False
     fp16: bool = False
     report_to: list[str] = field(default_factory=list)

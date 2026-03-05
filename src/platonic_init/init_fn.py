@@ -34,6 +34,9 @@ def build_platonic_state_dict(
             continue
 
         mean = entry["mean"].to(torch.float32)
+        if mean.numel() != target.numel():
+            # Skip tensors whose shape changed (e.g., vocab embeddings between PPT and downstream pretraining).
+            continue
         basis_type = entry["basis_type"]
         basis_params = entry.get("basis_params")
         if basis_params is None:
@@ -53,7 +56,9 @@ def build_platonic_state_dict(
                 comp = reconstruct_component(len(vec), c, basis_type, basis_params=basis_params)
                 vec = vec + z[i] * comp
 
-        out[key] = vec.reshape(entry["shape"]).to(dtype=target.dtype)
+        if int(np.prod(entry["shape"])) != target.numel():
+            continue
+        out[key] = vec.reshape(target.shape).to(dtype=target.dtype)
 
     return out
 
