@@ -17,7 +17,7 @@ training:
   wandb_project: platonic-init
   wandb_entity: null
 sweep:
-  seeds: [0, 1]
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7]
   output_root: runs
   experiment_name: dyck_d10_5k_demo
 analysis:
@@ -25,9 +25,13 @@ analysis:
   max_params_per_tensor: null
   dtype: float32
 analytic_fit:
-  basis_type: poly_exp
+  basis_type: chebyshev
   poly_degree: 5
   exp_scales: [0.5, 1.0, 2.0, 4.0]
+  chebyshev_degree: 12
+  fourier_degree: 6
+  rbf_num_centers: 10
+  rbf_sigma: 0.1
 init_eval_data:
   source: hf
   dataset_name: wikitext

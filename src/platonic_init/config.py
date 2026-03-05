@@ -43,9 +43,13 @@ class AnalysisConfig:
 
 @dataclass
 class AnalyticFitConfig:
-    basis_type: str = "poly_exp"
+    basis_type: str = "chebyshev"
     poly_degree: int = 5
     exp_scales: list[float] = field(default_factory=lambda: [0.5, 1.0, 2.0, 4.0])
+    chebyshev_degree: int = 12
+    fourier_degree: int = 8
+    rbf_num_centers: int = 8
+    rbf_sigma: float = 0.08
 
 
 @dataclass

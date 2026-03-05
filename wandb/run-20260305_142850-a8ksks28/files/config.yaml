@@ -1,0 +1,434 @@
+_name_or_path:
+    value: sshleifer/tiny-gpt2
+_wandb:
+    value:
+        cli_version: 0.25.0
+        e:
+            4epoykgu1zw0yeauk7xvq3q44810rk3m:
+                apple:
+                    ecpuCores: 4
+                    gpuCores: 19
+                    memoryGb: 16
+                    name: Apple M2 Pro
+                    pcpuCores: 8
+                    ramTotalBytes: "17179869184"
+                    swapTotalBytes: "11811160064"
+                args:
+                    - --config
+                    - configs/experiment_dyck_d10_5k_demo.yaml
+                cpu_count: 12
+                cpu_count_logical: 12
+                disk:
+                    /:
+                        total: "994662584320"
+                        used: "955178180608"
+                email: jacksonopetty@gmail.com
+                executable: /Users/jacksonpetty/Development/platonic-init/.venv/bin/python3
+                git:
+                    commit: 0732c8322c14dffb3c01d8629279cb0948d95460
+                    remote: https://github.com/jopetty/platonic-init.git
+                host: 10-18-71-83.dynapool.wireless.nyu.edu
+                memory:
+                    total: "17179869184"
+                os: macOS-26.3-arm64-arm-64bit-Mach-O
+                program: -m platonic_init.pipeline
+                python: CPython 3.14.3
+                root: /Users/jacksonpetty/Development/platonic-init
+                startedAt: "2026-03-05T19:28:50.394491Z"
+                writerId: 4epoykgu1zw0yeauk7xvq3q44810rk3m
+        m:
+            - "1": train/global_step
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.14.3
+        t:
+            "1":
+                - 1
+                - 5
+                - 11
+                - 49
+                - 51
+                - 53
+                - 71
+                - 84
+            "2":
+                - 1
+                - 5
+                - 11
+                - 49
+                - 51
+                - 53
+                - 71
+                - 84
+            "3":
+                - 7
+                - 13
+                - 19
+                - 62
+                - 66
+            "4": 3.14.3
+            "5": 0.25.0
+            "6": 5.3.0
+            "9":
+                "1": transformers_trainer
+            "12": 0.25.0
+            "13": darwin-arm64
+accelerator_config:
+    value:
+        dispatch_batches: null
+        even_batches: true
+        gradient_accumulation_kwargs: null
+        non_blocking: false
+        split_batches: false
+        use_seedable_sampler: true
+activation_function:
+    value: gelu_new
+activation_offloading:
+    value: false
+adam_beta1:
+    value: 0.9
+adam_beta2:
+    value: 0.999
+adam_epsilon:
+    value: 1e-08
+add_cross_attention:
+    value: false
+architectures:
+    value:
+        - GPT2LMHeadModel
+assistant_only_loss:
+    value: false
+attn_pdrop:
+    value: 0.1
+auto_find_batch_size:
+    value: false
+average_tokens_across_devices:
+    value: true
+batch_eval_metrics:
+    value: false
+bf16:
+    value: true
+bf16_full_eval:
+    value: false
+bos_token_id:
+    value: 50256
+chat_template_path:
+    value: null
+chunk_size_feed_forward:
+    value: 0
+completion_only_loss:
+    value: null
+data_seed:
+    value: null
+dataloader_drop_last:
+    value: false
+dataloader_num_workers:
+    value: 0
+dataloader_persistent_workers:
+    value: false
+dataloader_pin_memory:
+    value: true
+dataloader_prefetch_factor:
+    value: null
+dataset_kwargs:
+    value: null
+dataset_num_proc:
+    value: null
+dataset_text_field:
+    value: text
+ddp_backend:
+    value: null
+ddp_broadcast_buffers:
+    value: null
+ddp_bucket_cap_mb:
+    value: null
+ddp_find_unused_parameters:
+    value: null
+ddp_timeout:
+    value: 1800
+debug:
+    value: []
+deepspeed:
+    value: null
+disable_tqdm:
+    value: false
+do_eval:
+    value: true
+do_predict:
+    value: false
+do_train:
+    value: false
+dtype:
+    value: null
+embd_pdrop:
+    value: 0.1
+enable_jit_checkpoint:
+    value: false
+eos_token:
+    value: <EOS_TOKEN>
+eos_token_id:
+    value: 50256
+eval_accumulation_steps:
+    value: null
+eval_delay:
+    value: 0
+eval_do_concat_batches:
+    value: true
+eval_on_start:
+    value: false
+eval_packing:
+    value: null
+eval_steps:
+    value: 40
+eval_strategy:
+    value: steps
+eval_use_gather_object:
+    value: false
+fp16:
+    value: false
+fp16_full_eval:
+    value: false
+fsdp:
+    value: []
+fsdp_config:
+    value:
+        min_num_params: 0
+        xla: false
+        xla_fsdp_grad_ckpt: false
+        xla_fsdp_v2: false
+full_determinism:
+    value: false
+gradient_accumulation_steps:
+    value: 1
+gradient_checkpointing:
+    value: true
+gradient_checkpointing_kwargs:
+    value: null
+greater_is_better:
+    value: null
+hub_always_push:
+    value: false
+hub_model_id:
+    value: null
+hub_private_repo:
+    value: null
+hub_revision:
+    value: null
+hub_strategy:
+    value: every_save
+hub_token:
+    value: <HUB_TOKEN>
+id2label:
+    value:
+        "0": LABEL_0
+        "1": LABEL_1
+ignore_data_skip:
+    value: false
+include_for_metrics:
+    value: []
+include_num_input_tokens_seen:
+    value: "no"
+initializer_range:
+    value: 0.02
+is_encoder_decoder:
+    value: false
+label_names:
+    value: null
+label_smoothing_factor:
+    value: 0
+label2id:
+    value:
+        LABEL_0: 0
+        LABEL_1: 1
+layer_norm_epsilon:
+    value: 1e-05
+learning_rate:
+    value: 0.0003
+length_column_name:
+    value: length
+liger_kernel_config:
+    value: null
+load_best_model_at_end:
+    value: false
+local_rank:
+    value: -1
+log_level:
+    value: passive
+log_level_replica:
+    value: warning
+log_on_each_node:
+    value: true
+logging_dir:
+    value: null
+logging_first_step:
+    value: false
+logging_nan_inf_filter:
+    value: true
+logging_steps:
+    value: 10
+logging_strategy:
+    value: steps
+loss_type:
+    value: nll
+lr_scheduler_kwargs:
+    value: null
+lr_scheduler_type:
+    value: linear
+max_grad_norm:
+    value: 1
+max_length:
+    value: 128
+max_steps:
+    value: 200
+metric_for_best_model:
+    value: null
+model/num_parameters:
+    value: 102714
+model_init_kwargs:
+    value: null
+model_type:
+    value: gpt2
+n_ctx:
+    value: 1024
+n_embd:
+    value: 2
+n_head:
+    value: 2
+n_inner:
+    value: null
+n_layer:
+    value: 2
+n_positions:
+    value: 1024
+neftune_noise_alpha:
+    value: null
+num_train_epochs:
+    value: 1
+optim:
+    value: adamw_torch_fused
+optim_args:
+    value: null
+optim_target_modules:
+    value: null
+output_attentions:
+    value: false
+output_dir:
+    value: runs/init_eval/random
+output_hidden_states:
+    value: false
+packing:
+    value: false
+packing_strategy:
+    value: bfd
+pad_to_multiple_of:
+    value: null
+pad_token:
+    value: <PAD_TOKEN>
+pad_token_id:
+    value: 50256
+padding_free:
+    value: false
+parallelism_config:
+    value: null
+per_device_eval_batch_size:
+    value: 8
+per_device_train_batch_size:
+    value: 8
+prediction_loss_only:
+    value: false
+problem_type:
+    value: null
+project:
+    value: huggingface
+push_to_hub:
+    value: false
+remove_unused_columns:
+    value: true
+reorder_and_upcast_attn:
+    value: false
+report_to:
+    value:
+        - wandb
+resid_pdrop:
+    value: 0.1
+restore_callback_states_from_checkpoint:
+    value: false
+resume_from_checkpoint:
+    value: null
+return_dict:
+    value: true
+run_name:
+    value: dyck_d10_5k_demo-init-eval-random
+save_on_each_node:
+    value: false
+save_only_model:
+    value: false
+save_steps:
+    value: 500
+save_strategy:
+    value: "no"
+save_total_limit:
+    value: null
+scale_attn_by_inverse_layer_idx:
+    value: false
+scale_attn_weights:
+    value: true
+seed:
+    value: 42
+shuffle_dataset:
+    value: false
+skip_memory_metrics:
+    value: true
+summary_activation:
+    value: null
+summary_first_dropout:
+    value: 0.1
+summary_proj_to_labels:
+    value: true
+summary_type:
+    value: cls_index
+summary_use_proj:
+    value: true
+task_specific_params:
+    value:
+        text-generation:
+            do_sample: true
+            max_length: 50
+tf32:
+    value: null
+tie_word_embeddings:
+    value: true
+torch_compile:
+    value: false
+torch_compile_backend:
+    value: null
+torch_compile_mode:
+    value: null
+torch_empty_cache_steps:
+    value: null
+trackio_space_id:
+    value: trackio
+train_sampling_strategy:
+    value: random
+transformers_version:
+    value: 5.3.0
+use_cache:
+    value: false
+use_cpu:
+    value: false
+use_liger_kernel:
+    value: false
+vocab_size:
+    value: 50257
+warmup_ratio:
+    value: null
+warmup_steps:
+    value: 0
+weight_decay:
+    value: 0

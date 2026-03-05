@@ -5,31 +5,16 @@ from typing import Any
 import numpy as np
 import torch
 
-
-def _build_basis(n: int, basis_type: str, poly_degree: int, exp_scales: list[float]) -> torch.Tensor:
-    x = torch.linspace(0.0, 1.0, n, dtype=torch.float32)
-    cols = [torch.ones_like(x)]
-
-    if basis_type in {"poly", "poly_exp"}:
-        for p in range(1, poly_degree + 1):
-            cols.append(x**p)
-
-    if basis_type in {"exp", "poly_exp"}:
-        for scale in exp_scales:
-            cols.append(torch.exp(-scale * x))
-            cols.append(torch.exp(scale * (x - 1.0)))
-
-    return torch.stack(cols, dim=1)
+from .basis import build_basis_torch
 
 
 def reconstruct_component(
     n: int,
     coeffs: torch.Tensor,
     basis_type: str,
-    poly_degree: int,
-    exp_scales: list[float],
+    basis_params: dict[str, Any] | None = None,
 ) -> torch.Tensor:
-    basis = _build_basis(n=n, basis_type=basis_type, poly_degree=poly_degree, exp_scales=exp_scales)
+    basis = build_basis_torch(n=n, basis_type=basis_type, **(basis_params or {}))
     return basis @ coeffs.to(torch.float32)
 
 
@@ -50,8 +35,13 @@ def build_platonic_state_dict(
 
         mean = entry["mean"].to(torch.float32)
         basis_type = entry["basis_type"]
-        poly_degree = int(entry["poly_degree"])
-        exp_scales = [float(x) for x in entry["exp_scales"]]
+        basis_params = entry.get("basis_params")
+        if basis_params is None:
+            # Backward compatibility with old artifacts.
+            basis_params = {
+                "poly_degree": int(entry.get("poly_degree", 5)),
+                "exp_scales": [float(x) for x in entry.get("exp_scales", [0.5, 1.0, 2.0, 4.0])],
+            }
         coeffs = entry["component_coeffs"]
 
         vec = mean.clone()
@@ -60,7 +50,7 @@ def build_platonic_state_dict(
             if z.numel() != len(coeffs):
                 raise ValueError(f"Latent dim mismatch for {key}: got {z.numel()} expected {len(coeffs)}")
             for i, c in enumerate(coeffs):
-                comp = reconstruct_component(len(vec), c, basis_type, poly_degree, exp_scales)
+                comp = reconstruct_component(len(vec), c, basis_type, basis_params=basis_params)
                 vec = vec + z[i] * comp
 
         out[key] = vec.reshape(entry["shape"]).to(dtype=target.dtype)

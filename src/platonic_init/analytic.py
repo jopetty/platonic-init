@@ -8,30 +8,25 @@ from typing import Any
 import numpy as np
 import torch
 
+from .basis import build_basis_numpy
 from .config import AnalyticFitConfig, load_config
 from .env import load_project_env
 
 
-def _build_basis(n: int, cfg: AnalyticFitConfig) -> np.ndarray:
-    x = np.linspace(0.0, 1.0, n, dtype=np.float64)
-    cols = [np.ones_like(x)]
-
-    if cfg.basis_type in {"poly", "poly_exp"}:
-        for p in range(1, cfg.poly_degree + 1):
-            cols.append(x**p)
-
-    if cfg.basis_type in {"exp", "poly_exp"}:
-        for scale in cfg.exp_scales:
-            cols.append(np.exp(-scale * x))
-            cols.append(np.exp(scale * (x - 1.0)))
-
-    basis = np.stack(cols, axis=1)
-    return basis
+def _basis_params(cfg: AnalyticFitConfig) -> dict[str, Any]:
+    return {
+        "poly_degree": int(cfg.poly_degree),
+        "exp_scales": [float(x) for x in cfg.exp_scales],
+        "chebyshev_degree": int(cfg.chebyshev_degree),
+        "fourier_degree": int(cfg.fourier_degree),
+        "rbf_num_centers": int(cfg.rbf_num_centers),
+        "rbf_sigma": float(cfg.rbf_sigma),
+    }
 
 
 def _fit_vector(vec: torch.Tensor, cfg: AnalyticFitConfig) -> tuple[np.ndarray, float]:
     y = vec.detach().cpu().numpy().astype(np.float64)
-    basis = _build_basis(len(y), cfg)
+    basis = build_basis_numpy(len(y), cfg.basis_type, **_basis_params(cfg))
     coeffs, *_ = np.linalg.lstsq(basis, y, rcond=None)
     recon = basis @ coeffs
     rel_error = float(np.linalg.norm(recon - y) / (np.linalg.norm(y) + 1e-12))
@@ -64,9 +59,8 @@ def fit_analytic_subspace(
             "numel": entry["numel"],
             "mean": mean,
             "basis_type": cfg.basis_type,
-            "poly_degree": cfg.poly_degree,
-            "exp_scales": cfg.exp_scales,
-            "basis_dim": int(_build_basis(n, cfg).shape[1]),
+            "basis_params": _basis_params(cfg),
+            "basis_dim": int(build_basis_numpy(n, cfg.basis_type, **_basis_params(cfg)).shape[1]),
             "component_coeffs": comp_coeffs,
             "explained_variance": entry["explained_variance"],
             "explained_variance_ratio": entry["explained_variance_ratio"],

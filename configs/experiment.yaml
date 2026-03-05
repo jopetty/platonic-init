@@ -25,9 +25,13 @@ analysis:
   max_params_per_tensor: null
   dtype: float32
 analytic_fit:
-  basis_type: poly_exp
+  basis_type: chebyshev
   poly_degree: 5
   exp_scales: [0.5, 1.0, 2.0, 4.0]
+  chebyshev_degree: 16
+  fourier_degree: 8
+  rbf_num_centers: 12
+  rbf_sigma: 0.08
 init_eval_data:
   source: hf
   dataset_name: wikitext

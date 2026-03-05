@@ -1,0 +1,39 @@
+{
+  "os": "macOS-26.3-arm64-arm-64bit-Mach-O",
+  "python": "CPython 3.14.3",
+  "startedAt": "2026-03-05T19:28:50.394491Z",
+  "args": [
+    "--config",
+    "configs/experiment_dyck_d10_5k_demo.yaml"
+  ],
+  "program": "-m platonic_init.pipeline",
+  "git": {
+    "remote": "https://github.com/jopetty/platonic-init.git",
+    "commit": "0732c8322c14dffb3c01d8629279cb0948d95460"
+  },
+  "email": "jacksonopetty@gmail.com",
+  "root": "/Users/jacksonpetty/Development/platonic-init",
+  "host": "10-18-71-83.dynapool.wireless.nyu.edu",
+  "executable": "/Users/jacksonpetty/Development/platonic-init/.venv/bin/python3",
+  "cpu_count": 12,
+  "cpu_count_logical": 12,
+  "disk": {
+    "/": {
+      "total": "994662584320",
+      "used": "955178180608"
+    }
+  },
+  "memory": {
+    "total": "17179869184"
+  },
+  "apple": {
+    "name": "Apple M2 Pro",
+    "ecpuCores": 4,
+    "pcpuCores": 8,
+    "gpuCores": 19,
+    "memoryGb": 16,
+    "swapTotalBytes": "11811160064",
+    "ramTotalBytes": "17179869184"
+  },
+  "writerId": "4epoykgu1zw0yeauk7xvq3q44810rk3m"
+}

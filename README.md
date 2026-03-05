@@ -41,9 +41,10 @@ Outputs:
 
 ### 3) Analytic Compression
 - Fit each principal axis with analytic bases over parameter index:
-  - `poly`
-  - `exp`
-  - `poly_exp`
+  - `chebyshev` (recommended default)
+  - `fourier`
+  - `rbf`
+  - `poly_exp` (legacy baseline)
 - Keep coefficients only, not dense vectors, yielding a compact initialization function.
 - Track relative reconstruction error per tensor/component.
 
@@ -148,6 +149,16 @@ uv run python -m platonic_init.eval_init --config configs/experiment.yaml
 - Current subspace extraction assumes identical tensor names/shapes across checkpoints.
 - Cross-architecture sharing (different shapes) is intentionally handled as separate cohorts rather than forced alignment.
 - `analysis.max_params_per_tensor` should remain `null` if you want to reconstruct full tensors for initialization.
+- Recommended analytic family sweep order:
+  1. `chebyshev` (stable orthogonal baseline for smooth global structure)
+  2. `fourier` (good for low-frequency / periodic-ish structure)
+  3. `rbf` (good for localized structure)
+  4. `poly_exp` (legacy baseline from earlier experiments)
+- `analytic_fit.basis_type` currently supports:
+  - `chebyshev`: orthogonal polynomial basis on normalized index coordinates.
+  - `fourier`: truncated sin/cos basis for smooth periodic-ish structure.
+  - `rbf`: Gaussian radial basis functions for localized structure.
+  - `poly`, `exp`, `poly_exp`: legacy options for backward compatibility.
 
 ## Suggested Next Extensions
 
