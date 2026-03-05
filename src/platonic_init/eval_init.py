@@ -7,13 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from datasets import Dataset
+import torch
 from transformers import AutoConfig, AutoModelForCausalLM, set_seed
 from trl import SFTConfig, SFTTrainer
 
 from .config import load_config
-from .data import build_tokenizer, load_init_eval_datasets
+from .data import build_tokenizer, load_init_eval_datasets, load_saved_tokenizer
 from .env import load_project_env
 from .init_fn import apply_platonic_init, sample_latent
+from .paths import pretraining_init_eval_root, prepretraining_seed_dir
 
 
 def _build_model(model_name_or_path: str):
@@ -23,6 +25,59 @@ def _build_model(model_name_or_path: str):
 
 def _load_pretrained_model(model_name_or_path: str):
     return AutoModelForCausalLM.from_pretrained(model_name_or_path)
+
+
+def _copy_matching_weights(source: torch.nn.Module, target: torch.nn.Module) -> None:
+    source_state = source.state_dict()
+    target_state = target.state_dict()
+    filtered: dict[str, torch.Tensor] = {}
+    for k, v in source_state.items():
+        if k in {"transformer.wte.weight", "lm_head.weight"}:
+            continue
+        if k in target_state and target_state[k].shape == v.shape:
+            filtered[k] = v
+    target.load_state_dict(filtered, strict=False)
+
+
+def _project_shared_token_embeddings(source_model, source_tokenizer, target_model, target_tokenizer) -> int:
+    source_vocab = source_tokenizer.get_vocab()
+    target_vocab = target_tokenizer.get_vocab()
+    source_embed = source_model.get_input_embeddings().weight.data
+    target_embed = target_model.get_input_embeddings().weight.data
+    if source_embed.shape[1] != target_embed.shape[1]:
+        return 0
+
+    copied = 0
+    for token, sid in source_vocab.items():
+        tid = target_vocab.get(token)
+        if tid is None:
+            continue
+        if sid >= source_embed.shape[0] or tid >= target_embed.shape[0]:
+            continue
+        target_embed[tid].copy_(source_embed[sid])
+        copied += 1
+
+    out_embed = target_model.get_output_embeddings()
+    if out_embed is not None and out_embed.weight.shape == target_embed.shape:
+        out_embed.weight.data.copy_(target_embed)
+    return copied
+
+
+def _apply_prepretrain_projection(
+    target_model,
+    target_tokenizer,
+    embedding_transfer_model_path: str | None,
+    *,
+    copy_non_embedding_weights: bool = False,
+) -> int:
+    if embedding_transfer_model_path is None:
+        return 0
+    source_model = _load_pretrained_model(embedding_transfer_model_path)
+    source_tokenizer = load_saved_tokenizer(embedding_transfer_model_path)
+    if copy_non_embedding_weights:
+        _copy_matching_weights(source_model, target_model)
+    copied = _project_shared_token_embeddings(source_model, source_tokenizer, target_model, target_tokenizer)
+    return copied
 
 
 def _configure_wandb_env(wandb_project: str | None, wandb_entity: str | None) -> None:
@@ -65,17 +120,24 @@ def run_variant(
     wandb_entity: str | None = None,
     eval_every: int | None = None,
     transfer_model_path: str | None = None,
+    embedding_transfer_model_path: str | None = None,
 ) -> dict[str, Any]:
     set_seed(seed)
     if report_to and "wandb" in report_to:
         _configure_wandb_env(wandb_project=wandb_project, wandb_entity=wandb_entity)
+    model = _build_model(model_name_or_path)
+    model.resize_token_embeddings(len(tokenizer))
+
+    copied_embedding_rows = 0
     if variant == "weight_transfer":
         if transfer_model_path is None:
             raise ValueError("transfer_model_path is required for weight_transfer variant")
-        model = _load_pretrained_model(transfer_model_path)
-    else:
-        model = _build_model(model_name_or_path)
-    model.resize_token_embeddings(len(tokenizer))
+        copied_embedding_rows = _apply_prepretrain_projection(
+            target_model=model,
+            target_tokenizer=tokenizer,
+            embedding_transfer_model_path=transfer_model_path,
+            copy_non_embedding_weights=True,
+        )
 
     if variant.startswith("platonic"):
         if analytic_subspace is None:
@@ -84,6 +146,13 @@ def run_variant(
         if variant == "platonic_sampled":
             latent = sample_latent(analytic_subspace, seed=latent_seed)
         apply_platonic_init(model, analytic_subspace, latent=latent, latent_scale=latent_scale)
+    if variant != "weight_transfer":
+        copied_embedding_rows = _apply_prepretrain_projection(
+            target_model=model,
+            target_tokenizer=tokenizer,
+            embedding_transfer_model_path=embedding_transfer_model_path,
+            copy_non_embedding_weights=False,
+        )
 
     args = SFTConfig(
         output_dir=str(out_dir),
@@ -142,6 +211,7 @@ def run_variant(
         # Backward-compatibility alias used by older analysis notebooks.
         "eval_loss": float(final_metrics.get("eval_loss", float("nan"))),
         "eval_curve": deduped_curve,
+        "copied_embedding_rows": int(copied_embedding_rows),
     }
     return out
 
@@ -188,7 +258,7 @@ def main() -> None:
 
         analytic_subspace = torch.load(args.analytic_subspace, map_location="cpu")
 
-    out_dir = Path("runs") / "pretraining" / cfg.sweep.experiment_name / "init_eval"
+    out_dir = pretraining_init_eval_root(cfg)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     variants = ["random"]
@@ -198,6 +268,8 @@ def main() -> None:
         variants.append("weight_transfer")
 
     results = []
+    default_transfer_ckpt = prepretraining_seed_dir(cfg, seed=cfg.sweep.seeds[0] if cfg.sweep.seeds else 0)
+    embedding_transfer_model_path = str(default_transfer_ckpt) if default_transfer_ckpt.exists() else None
     for variant in variants:
         result = run_variant(
             variant=variant,
@@ -220,6 +292,7 @@ def main() -> None:
             wandb_entity=cfg.training.wandb_entity,
             eval_every=args.eval_every,
             transfer_model_path=args.transfer_model_path,
+            embedding_transfer_model_path=embedding_transfer_model_path,
         )
         results.append(result)
 
