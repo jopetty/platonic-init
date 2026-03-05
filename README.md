@@ -90,6 +90,13 @@ For each cohort, run stages 1-4 independently, then compare:
 uv sync
 ```
 
+For notebook support in the project venv:
+```bash
+uv sync --extra notebook
+uv run python -m ipykernel install --user --name platonic-init --display-name "Python (platonic-init)"
+uv run jupyter lab
+```
+
 2. Put your fixed synthetic corpus at:
 ```text
 data/synthetic.txt
@@ -98,6 +105,11 @@ data/synthetic.txt
 Optional: generate a Dyck dataset with power-law depth sampling:
 ```bash
 uv run python scripts/generate_dyck.py --n-samples 5000 --max-depth 10 --alpha 1.5 --output data/dyck_d10_5k.txt
+```
+
+Demo config for a fast 2-seed Dyck run:
+```bash
+./scripts/run_pipeline.sh configs/experiment_dyck_d10_5k_demo.yaml
 ```
 
 3. Run full pipeline:

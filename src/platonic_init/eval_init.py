@@ -55,7 +55,7 @@ def run_variant(
     args = SFTConfig(
         output_dir=str(out_dir),
         dataset_text_field="text",
-        max_seq_length=block_size,
+        max_length=block_size,
         num_train_epochs=1,
         max_steps=train_steps,
         per_device_train_batch_size=batch_size,
@@ -70,7 +70,7 @@ def run_variant(
     trainer = SFTTrainer(
         model=model,
         args=args,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
     )

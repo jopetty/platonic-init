@@ -27,7 +27,7 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
     args = SFTConfig(
         output_dir=output_dir,
         dataset_text_field="text",
-        max_seq_length=config.training.block_size,
+        max_length=config.training.block_size,
         num_train_epochs=1,
         max_steps=config.training.max_steps,
         per_device_train_batch_size=config.training.per_device_train_batch_size,
@@ -46,7 +46,7 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
     trainer = SFTTrainer(
         model=model,
         args=args,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=dataset,
     )
     trainer.train()
