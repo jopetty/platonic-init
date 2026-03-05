@@ -16,7 +16,7 @@ Operationalized approach:
 2. Analyze checkpoints tensor-by-tensor to extract a shared core: mean weight vector + top principal directions.
 3. Fit those principal directions with low-dimensional analytic bases (polynomial, exponential, or combined).
 4. Build a closed-form initializer from the fitted representation.
-5. Compare `random` vs `platonic_mean` vs `platonic_sampled` initializations under the same downstream optimization budget.
+5. Compare `random` vs `weight_transfer` vs basis-derived analytic initializations under the same downstream optimization budget.
 
 ## Experimental Plan
 
@@ -53,10 +53,10 @@ Outputs:
 - `artifacts/analytic_fit_report.json`
 
 ### 4) Initialization Evaluation
-- Compare three variants with equal training budget:
+- Compare variants with equal training budget:
   - `random`
-  - `platonic_mean` (deterministic)
-  - `platonic_sampled` (mean + sampled latent in learned subspace)
+  - basis-derived analytic inits (`chebyshev`, `fourier`, `rbf`, `poly_exp`)
+  - `weight_transfer` from a pre-pretrained seed
 - Evaluate early loss/perplexity and convergence speed on a standard LM dataset
   configured under `init_eval_data` (defaults to WikiText-2 in this repo).
 
@@ -80,7 +80,7 @@ For each cohort, run stages 1-4 independently, then compare:
 - `src/platonic_init/analyze.py`: tensorwise shared-subspace extraction
 - `src/platonic_init/analytic.py`: analytic basis fitting for PCA components
 - `src/platonic_init/init_fn.py`: closed-form initializer construction/application
-- `src/platonic_init/eval_init.py`: random vs platonic init comparison
+- `src/platonic_init/eval_init.py`: per-variant downstream initialization evaluation
 - `src/platonic_init/pipeline.py`: end-to-end orchestration
 - `configs/experiment.yaml`: main experiment config
 - `scripts/*.sh`: convenience wrappers
@@ -127,7 +127,7 @@ uv run python scripts/generate_dyck.py --n-samples 5000 --max-depth 10 --alpha 1
 
 Demo config for a fast 2-seed Dyck run:
 ```bash
-./scripts/run_pipeline.sh configs/experiment_dyck_d10_5k_demo.yaml
+./scripts/run_pipeline.sh configs/experiment_dyck_d10_20k_demo.yaml
 ```
 This demo uses `sshleifer/tiny-gpt2` to keep runtime low.
 
@@ -136,12 +136,21 @@ This demo uses `sshleifer/tiny-gpt2` to keep runtime low.
 ./scripts/run_pipeline.sh configs/experiment.yaml
 ```
 
-Or run stages manually:
+Or run modular stages with the unified pipeline:
 ```bash
-./scripts/train_sweep.sh configs/experiment.yaml
-./scripts/analyze_subspace.sh configs/experiment.yaml
-./scripts/fit_analytic.sh configs/experiment.yaml
-uv run python -m platonic_init.eval_init --config configs/experiment.yaml
+uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stages prepretrain
+uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stages fit_initializations
+uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stages pretrain
+```
+
+Resume after pre-pretraining:
+```bash
+uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stages fit_initializations pretrain
+```
+
+Validate stage prerequisites without running:
+```bash
+uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stages pretrain --doctor
 ```
 
 ## Notes / Current Constraints
