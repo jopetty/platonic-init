@@ -1,0 +1,2 @@
+This is placeholder synthetic data. Replace this file with your fixed synthetic pre-pretraining corpus.
+For reproducibility, keep ordering stable and version this file.
