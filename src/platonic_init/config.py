@@ -49,12 +49,26 @@ class AnalyticFitConfig:
 
 
 @dataclass
+class InitEvalDataConfig:
+    source: str = "hf"  # one of: "hf", "local_text"
+    dataset_name: str = "wikitext"
+    dataset_config_name: str | None = "wikitext-2-raw-v1"
+    train_split: str = "train"
+    eval_split: str = "validation"
+    text_field: str = "text"
+    local_data_path: str | None = None
+    max_train_samples: int | None = 10000
+    max_eval_samples: int | None = 2000
+
+
+@dataclass
 class ExperimentConfig:
     data_path: str = "data/synthetic.txt"
     training: TrainingConfig = field(default_factory=TrainingConfig)
     sweep: SweepConfig = field(default_factory=SweepConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     analytic_fit: AnalyticFitConfig = field(default_factory=AnalyticFitConfig)
+    init_eval_data: InitEvalDataConfig = field(default_factory=InitEvalDataConfig)
 
 
 def _merge_dataclass(dc_obj: Any, values: dict[str, Any]) -> Any:

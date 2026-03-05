@@ -28,3 +28,13 @@ analytic_fit:
   basis_type: poly_exp
   poly_degree: 5
   exp_scales: [0.5, 1.0, 2.0, 4.0]
+init_eval_data:
+  source: hf
+  dataset_name: wikitext
+  dataset_config_name: wikitext-2-raw-v1
+  train_split: train
+  eval_split: validation
+  text_field: text
+  local_data_path: null
+  max_train_samples: 10000
+  max_eval_samples: 2000

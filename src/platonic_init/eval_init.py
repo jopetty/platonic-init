@@ -11,14 +11,9 @@ from transformers import AutoConfig, AutoModelForCausalLM, set_seed
 from trl import SFTConfig, SFTTrainer
 
 from .config import load_config
-from .data import build_tokenizer, load_text_dataset
+from .data import build_tokenizer, load_init_eval_datasets
 from .env import load_project_env
 from .init_fn import apply_platonic_init, sample_latent
-
-
-def _make_splits(ds: Dataset, eval_ratio: float, seed: int) -> tuple[Dataset, Dataset]:
-    split = ds.train_test_split(test_size=eval_ratio, seed=seed)
-    return split["train"], split["test"]
 
 
 def _build_model(model_name_or_path: str):
@@ -119,8 +114,12 @@ def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
 
-    dataset = load_text_dataset(cfg.data_path)
-    train_ds, eval_ds = _make_splits(dataset, eval_ratio=args.eval_ratio, seed=args.seed)
+    train_ds, eval_ds = load_init_eval_datasets(
+        cfg=cfg.init_eval_data,
+        default_local_path=cfg.data_path,
+        eval_ratio=args.eval_ratio,
+        seed=args.seed,
+    )
     tokenizer = build_tokenizer(cfg.training.model_name_or_path)
 
     analytic_subspace = None

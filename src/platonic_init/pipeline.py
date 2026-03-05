@@ -10,7 +10,7 @@ from .analytic import fit_analytic_subspace
 from .analyze import _load_state_dict, build_summary, tensorwise_pca
 from .config import load_config
 from .eval_init import run_variant
-from .data import build_tokenizer, load_text_dataset
+from .data import build_tokenizer, load_init_eval_datasets
 from .env import load_project_env
 from .train import sweep
 
@@ -68,10 +68,12 @@ def main() -> None:
     if args.skip_eval:
         return
 
-    dataset = load_text_dataset(cfg.data_path)
-    split = dataset.train_test_split(test_size=args.eval_ratio, seed=args.seed)
-    train_ds = split["train"]
-    eval_ds = split["test"]
+    train_ds, eval_ds = load_init_eval_datasets(
+        cfg=cfg.init_eval_data,
+        default_local_path=cfg.data_path,
+        eval_ratio=args.eval_ratio,
+        seed=args.seed,
+    )
     tokenizer = build_tokenizer(cfg.training.model_name_or_path)
 
     eval_root = Path("runs") / "init_eval"

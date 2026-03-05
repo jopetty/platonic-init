@@ -56,7 +56,8 @@ Outputs:
   - `random`
   - `platonic_mean` (deterministic)
   - `platonic_sampled` (mean + sampled latent in learned subspace)
-- Evaluate early loss/perplexity and convergence speed.
+- Evaluate early loss/perplexity and convergence speed on a standard LM dataset
+  configured under `init_eval_data` (defaults to WikiText-2 in this repo).
 
 Output:
 - `artifacts/init_eval.json`
@@ -127,6 +128,7 @@ Demo config for a fast 2-seed Dyck run:
 ```bash
 ./scripts/run_pipeline.sh configs/experiment_dyck_d10_5k_demo.yaml
 ```
+This demo uses `sshleifer/tiny-gpt2` to keep runtime low.
 
 3. Run full pipeline:
 ```bash
