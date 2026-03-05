@@ -210,3 +210,5 @@ __marimo__/
 runs/
 research_notes/
 wandb/
+artifacts/
+configs/tmp/
