@@ -21,11 +21,27 @@ def _build_model(model_name_or_path: str):
     return AutoModelForCausalLM.from_config(cfg)
 
 
+def _load_pretrained_model(model_name_or_path: str):
+    return AutoModelForCausalLM.from_pretrained(model_name_or_path)
+
+
 def _configure_wandb_env(wandb_project: str | None, wandb_entity: str | None) -> None:
     if wandb_project:
         os.environ["WANDB_PROJECT"] = wandb_project
     if wandb_entity:
         os.environ["WANDB_ENTITY"] = wandb_entity
+
+
+def _extract_eval_curve(log_history: list[dict[str, Any]]) -> list[dict[str, float]]:
+    curve: list[dict[str, float]] = []
+    for entry in log_history:
+        if "eval_loss" not in entry or entry["eval_loss"] is None:
+            continue
+        step = entry.get("step")
+        if step is None:
+            continue
+        curve.append({"step": float(step), "eval_loss": float(entry["eval_loss"])})
+    return curve
 
 
 def run_variant(
@@ -47,11 +63,18 @@ def run_variant(
     run_name: str | None = None,
     wandb_project: str | None = None,
     wandb_entity: str | None = None,
+    eval_every: int | None = None,
+    transfer_model_path: str | None = None,
 ) -> dict[str, Any]:
     set_seed(seed)
     if report_to and "wandb" in report_to:
         _configure_wandb_env(wandb_project=wandb_project, wandb_entity=wandb_entity)
-    model = _build_model(model_name_or_path)
+    if variant == "weight_transfer":
+        if transfer_model_path is None:
+            raise ValueError("transfer_model_path is required for weight_transfer variant")
+        model = _load_pretrained_model(transfer_model_path)
+    else:
+        model = _build_model(model_name_or_path)
     model.resize_token_embeddings(len(tokenizer))
 
     if variant.startswith("platonic"):
@@ -75,7 +98,7 @@ def run_variant(
         save_strategy="no",
         logging_steps=10,
         eval_strategy="steps",
-        eval_steps=max(10, train_steps // 5),
+        eval_steps=eval_every or max(10, train_steps // 5),
         seed=seed,
     )
     trainer = SFTTrainer(
@@ -85,19 +108,48 @@ def run_variant(
         train_dataset=train_ds,
         eval_dataset=eval_ds,
     )
+    initial_metrics = trainer.evaluate()
     train_result = trainer.train()
-    metrics = trainer.evaluate()
+    final_metrics = trainer.evaluate()
+    eval_curve = _extract_eval_curve(trainer.state.log_history)
+    eval_curve.insert(0, {"step": 0.0, "eval_loss": float(initial_metrics.get("eval_loss", float("nan")))})
+    eval_curve.append(
+        {
+            "step": float(trainer.state.global_step),
+            "eval_loss": float(final_metrics.get("eval_loss", float("nan"))),
+        }
+    )
+    # Keep the first observation per step to avoid duplicates from repeated evaluate() calls.
+    deduped_curve: list[dict[str, float]] = []
+    seen_steps: set[float] = set()
+    for point in eval_curve:
+        step = point["step"]
+        if step in seen_steps:
+            continue
+        seen_steps.add(step)
+        deduped_curve.append(point)
+    deduped_curve.sort(key=lambda p: p["step"])
+
+    eval_losses = [point["eval_loss"] for point in deduped_curve if point["eval_loss"] == point["eval_loss"]]
+    best_eval_loss = min(eval_losses) if eval_losses else float("nan")
 
     out = {
         "variant": variant,
         "train_loss": float(train_result.training_loss),
-        "eval_loss": float(metrics.get("eval_loss", float("nan"))),
+        "initial_eval_loss": float(initial_metrics.get("eval_loss", float("nan"))),
+        "best_eval_loss": float(best_eval_loss),
+        "final_eval_loss": float(final_metrics.get("eval_loss", float("nan"))),
+        # Backward-compatibility alias used by older analysis notebooks.
+        "eval_loss": float(final_metrics.get("eval_loss", float("nan"))),
+        "eval_curve": deduped_curve,
     }
     return out
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Compare random and platonic initialization")
+    p = argparse.ArgumentParser(
+        description="Compare initialization strategies by downstream fine-tuning validation loss"
+    )
     p.add_argument("--config", type=str, default="configs/experiment.yaml")
     p.add_argument("--analytic-subspace", type=str, default="artifacts/analytic_subspace.pt")
     p.add_argument("--out", type=str, default="artifacts/init_eval.json")
@@ -106,6 +158,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--latent-seed", type=int, default=123)
     p.add_argument("--latent-scale", type=float, default=1.0)
+    p.add_argument("--transfer-model-path", type=str, default=None)
+    p.add_argument("--include-transfer", action="store_true")
+    p.add_argument(
+        "--eval-every",
+        type=int,
+        default=None,
+        help="Evaluate every N training steps during downstream fine-tuning",
+    )
     return p.parse_args()
 
 
@@ -128,15 +188,17 @@ def main() -> None:
 
         analytic_subspace = torch.load(args.analytic_subspace, map_location="cpu")
 
-    out_dir = Path("runs") / "init_eval"
+    out_dir = Path("runs") / "pretraining" / cfg.sweep.experiment_name / "init_eval"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     variants = ["random"]
     if analytic_subspace is not None:
         variants += ["platonic_mean", "platonic_sampled"]
+    if args.include_transfer:
+        variants.append("weight_transfer")
 
     results = []
-    for i, variant in enumerate(variants):
+    for variant in variants:
         result = run_variant(
             variant=variant,
             model_name_or_path=cfg.training.model_name_or_path,
@@ -148,7 +210,7 @@ def main() -> None:
             batch_size=cfg.training.per_device_train_batch_size,
             learning_rate=cfg.training.learning_rate,
             block_size=cfg.training.block_size,
-            seed=args.seed + i,
+            seed=args.seed,
             analytic_subspace=analytic_subspace,
             latent_seed=args.latent_seed,
             latent_scale=args.latent_scale,
@@ -156,6 +218,8 @@ def main() -> None:
             run_name=f"{cfg.sweep.experiment_name}-init-eval-{variant}",
             wandb_project=cfg.training.wandb_project,
             wandb_entity=cfg.training.wandb_entity,
+            eval_every=args.eval_every,
+            transfer_model_path=args.transfer_model_path,
         )
         results.append(result)
 

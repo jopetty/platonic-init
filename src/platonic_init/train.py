@@ -31,6 +31,14 @@ def _configure_wandb_env(config: ExperimentConfig) -> None:
 def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Path:
     set_seed(seed)
     _configure_wandb_env(config)
+    run_name = (
+        f"{config.training.run_name}-prepretraining-seed{seed}"
+        if config.training.run_name
+        else f"{config.sweep.experiment_name}-prepretraining-seed{seed}"
+    )
+    if "wandb" in config.training.report_to:
+        os.environ["WANDB_NAME"] = run_name
+        os.environ["WANDB_RUN_GROUP"] = f"{config.sweep.experiment_name}-prepretraining"
     tokenizer = build_tokenizer(config.training.model_name_or_path)
     dataset = load_text_dataset(config.data_path)
     model = _build_model(config)
@@ -52,11 +60,7 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         bf16=config.training.bf16,
         fp16=config.training.fp16,
         report_to=config.training.report_to,
-        run_name=(
-            f"{config.training.run_name}-seed{seed}"
-            if config.training.run_name
-            else f"{config.sweep.experiment_name}-seed{seed}"
-        ),
+        run_name=run_name,
         seed=seed,
     )
 
@@ -67,6 +71,10 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         train_dataset=dataset,
     )
     trainer.train()
+    if "wandb" in config.training.report_to:
+        import wandb
+
+        wandb.finish()
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
     return Path(output_dir)
@@ -75,6 +83,7 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
 def sweep(config: ExperimentConfig) -> list[Path]:
     root = (
         Path(config.sweep.output_root)
+        / "prepretraining"
         / config.sweep.experiment_name
         / config.training.model_name_or_path.replace("/", "_")
     )
@@ -106,6 +115,7 @@ def main() -> None:
         if out is None:
             out = (
                 Path(config.sweep.output_root)
+                / "prepretraining"
                 / config.sweep.experiment_name
                 / config.training.model_name_or_path.replace("/", "_")
                 / f"seed_{args.seed}"

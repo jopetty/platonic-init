@@ -1,4 +1,9 @@
 data_path: data/dyck_d10_5k.txt
+
+# Layout conventions after migration:
+# - Pre-pretraining checkpoints: runs/prepretraining/<experiment_name>/<model_key>/seed_*
+# - Pretraining eval runs: runs/pretraining/<experiment_name>/...
+# - Artifacts: artifacts/experiments/<experiment_name>/{analysis,pretraining}/...
 training:
   model_name_or_path: sshleifer/tiny-gpt2
   block_size: 128
@@ -13,7 +18,7 @@ training:
   bf16: false
   fp16: false
   report_to: ["wandb"]
-  run_name: dyck_d10_5k_demo
+  run_name: dyck_d10_5k_demo-prepretraining
   wandb_project: platonic-init
   wandb_entity: null
 sweep:
