@@ -11,6 +11,7 @@ from safetensors.torch import load_file as safe_load_file
 from tqdm import tqdm
 
 from .config import AnalysisConfig, load_config
+from .env import load_project_env
 
 
 def _load_state_dict(model_dir: Path) -> dict[str, torch.Tensor]:
@@ -141,6 +142,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_project_env()
     args = parse_args()
     exp_cfg = load_config(args.config)
 

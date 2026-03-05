@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from .config import AnalyticFitConfig, load_config
+from .env import load_project_env
 
 
 def _build_basis(n: int, cfg: AnalyticFitConfig) -> np.ndarray:
@@ -89,6 +90,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_project_env()
     args = parse_args()
     exp_cfg = load_config(args.config)
     subspace = torch.load(args.subspace, map_location="cpu")

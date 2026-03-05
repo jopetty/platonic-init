@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from trl import SFTConfig, SFTTrainer
 
 from .config import load_config
 from .data import build_tokenizer, load_text_dataset
+from .env import load_project_env
 from .init_fn import apply_platonic_init, sample_latent
 
 
@@ -22,6 +24,13 @@ def _make_splits(ds: Dataset, eval_ratio: float, seed: int) -> tuple[Dataset, Da
 def _build_model(model_name_or_path: str):
     cfg = AutoConfig.from_pretrained(model_name_or_path)
     return AutoModelForCausalLM.from_config(cfg)
+
+
+def _configure_wandb_env(wandb_project: str | None, wandb_entity: str | None) -> None:
+    if wandb_project:
+        os.environ["WANDB_PROJECT"] = wandb_project
+    if wandb_entity:
+        os.environ["WANDB_ENTITY"] = wandb_entity
 
 
 def run_variant(
@@ -39,8 +48,14 @@ def run_variant(
     analytic_subspace: dict[str, Any] | None = None,
     latent_seed: int = 0,
     latent_scale: float = 1.0,
+    report_to: list[str] | None = None,
+    run_name: str | None = None,
+    wandb_project: str | None = None,
+    wandb_entity: str | None = None,
 ) -> dict[str, Any]:
     set_seed(seed)
+    if report_to and "wandb" in report_to:
+        _configure_wandb_env(wandb_project=wandb_project, wandb_entity=wandb_entity)
     model = _build_model(model_name_or_path)
     model.resize_token_embeddings(len(tokenizer))
 
@@ -60,7 +75,8 @@ def run_variant(
         max_steps=train_steps,
         per_device_train_batch_size=batch_size,
         learning_rate=learning_rate,
-        report_to=[],
+        report_to=report_to or [],
+        run_name=run_name,
         save_strategy="no",
         logging_steps=10,
         eval_strategy="steps",
@@ -99,6 +115,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_project_env()
     args = parse_args()
     cfg = load_config(args.config)
 
@@ -136,6 +153,10 @@ def main() -> None:
             analytic_subspace=analytic_subspace,
             latent_seed=args.latent_seed,
             latent_scale=args.latent_scale,
+            report_to=cfg.training.report_to,
+            run_name=f"{cfg.sweep.experiment_name}-init-eval-{variant}",
+            wandb_project=cfg.training.wandb_project,
+            wandb_entity=cfg.training.wandb_entity,
         )
         results.append(result)
 

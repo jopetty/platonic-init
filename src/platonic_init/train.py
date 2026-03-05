@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import torch
@@ -9,6 +10,7 @@ from trl import SFTConfig, SFTTrainer
 
 from .config import ExperimentConfig, load_config
 from .data import build_tokenizer, load_text_dataset
+from .env import load_project_env
 
 
 def _build_model(config: ExperimentConfig):
@@ -17,8 +19,18 @@ def _build_model(config: ExperimentConfig):
     return model
 
 
+def _configure_wandb_env(config: ExperimentConfig) -> None:
+    if "wandb" not in config.training.report_to:
+        return
+    if config.training.wandb_project:
+        os.environ["WANDB_PROJECT"] = config.training.wandb_project
+    if config.training.wandb_entity:
+        os.environ["WANDB_ENTITY"] = config.training.wandb_entity
+
+
 def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Path:
     set_seed(seed)
+    _configure_wandb_env(config)
     tokenizer = build_tokenizer(config.training.model_name_or_path)
     dataset = load_text_dataset(config.data_path)
     model = _build_model(config)
@@ -39,7 +51,12 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         logging_steps=config.training.logging_steps,
         bf16=config.training.bf16,
         fp16=config.training.fp16,
-        report_to=[],
+        report_to=config.training.report_to,
+        run_name=(
+            f"{config.training.run_name}-seed{seed}"
+            if config.training.run_name
+            else f"{config.sweep.experiment_name}-seed{seed}"
+        ),
         seed=seed,
     )
 
@@ -80,6 +97,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_project_env()
     args = parse_args()
     config = load_config(args.config)
 

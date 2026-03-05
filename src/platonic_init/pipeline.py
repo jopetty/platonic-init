@@ -11,6 +11,7 @@ from .analyze import _load_state_dict, build_summary, tensorwise_pca
 from .config import load_config
 from .eval_init import run_variant
 from .data import build_tokenizer, load_text_dataset
+from .env import load_project_env
 from .train import sweep
 
 
@@ -35,6 +36,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_project_env()
     args = parse_args()
     cfg = load_config(args.config)
 
@@ -93,6 +95,10 @@ def main() -> None:
             analytic_subspace=analytic_subspace,
             latent_seed=args.seed + 100,
             latent_scale=1.0,
+            report_to=cfg.training.report_to,
+            run_name=f"{cfg.sweep.experiment_name}-init-eval-{variant}",
+            wandb_project=cfg.training.wandb_project,
+            wandb_entity=cfg.training.wandb_entity,
         )
         results.append(result)
 

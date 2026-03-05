@@ -97,6 +97,22 @@ uv run python -m ipykernel install --user --name platonic-init --display-name "P
 uv run jupyter lab
 ```
 
+Weights & Biases logging is configured via `training.report_to` in config files.
+Before runs with W&B enabled, authenticate once:
+```bash
+uv run wandb login
+```
+
+All CLI entrypoints automatically load `.env` from the repository root (if present),
+so API keys can be provided there for W&B / Hugging Face / other SDKs.
+Example `.env`:
+```bash
+WANDB_API_KEY=...
+WANDB_ENTITY=...
+HF_TOKEN=...
+HUGGINGFACE_HUB_TOKEN=...
+```
+
 2. Put your fixed synthetic corpus at:
 ```text
 data/synthetic.txt

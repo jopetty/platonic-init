@@ -12,6 +12,10 @@ training:
   logging_steps: 10
   bf16: false
   fp16: false
+  report_to: ["wandb"]
+  run_name: dyck_d10_5k_demo
+  wandb_project: platonic-init
+  wandb_entity: null
 sweep:
   seeds: [0, 1]
   output_root: runs

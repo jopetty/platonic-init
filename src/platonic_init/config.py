@@ -21,6 +21,10 @@ class TrainingConfig:
     logging_steps: int = 10
     bf16: bool = False
     fp16: bool = False
+    report_to: list[str] = field(default_factory=list)
+    run_name: str | None = None
+    wandb_project: str | None = None
+    wandb_entity: str | None = None
 
 
 @dataclass
