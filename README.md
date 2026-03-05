@@ -95,6 +95,11 @@ uv sync
 data/synthetic.txt
 ```
 
+Optional: generate a Dyck dataset with power-law depth sampling:
+```bash
+uv run python scripts/generate_dyck.py --n-samples 5000 --max-depth 10 --alpha 1.5 --output data/dyck_d10_5k.txt
+```
+
 3. Run full pipeline:
 ```bash
 ./scripts/run_pipeline.sh configs/experiment.yaml
