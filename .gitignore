@@ -209,3 +209,4 @@ __marimo__/
 # Project experiment outputs / notes
 runs/
 research_notes/
+wandb/
