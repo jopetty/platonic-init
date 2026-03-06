@@ -435,6 +435,12 @@ def _pretrain_stage(
             embedding_transfer_model_path=transfer_model_path,
             step_progress_desc=f"steps | init={label}",
             step_progress_position=1,
+            warmup_steps=cfg.training.warmup_steps,
+            warmup_ratio=cfg.training.warmup_ratio,
+            min_lr_rate=cfg.training.min_lr_rate,
+            bf16=cfg.training.bf16,
+            fp16=cfg.training.fp16,
+            prefer_flash_attention_2=cfg.training.prefer_flash_attention_2,
         )
         result["label"] = label
         result["basis"] = job["basis"]

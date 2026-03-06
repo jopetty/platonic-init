@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
+import platform
 from pathlib import Path
 from typing import Any
 
@@ -19,13 +21,47 @@ from .init_fn import apply_platonic_init, sample_latent
 from .paths import pretraining_init_eval_root, prepretraining_seed_dir
 
 
-def _build_model(model_name_or_path: str):
+def _resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
+    if not prefer_flash_attention_2:
+        return None
+    if platform.system() == "Darwin":
+        return None
+    if not torch.cuda.is_available():
+        return None
+    if importlib.util.find_spec("flash_attn") is None:
+        return None
+    return "flash_attention_2"
+
+
+def _build_model(
+    model_name_or_path: str,
+    *,
+    bf16: bool = False,
+    prefer_flash_attention_2: bool = True,
+):
     cfg = AutoConfig.from_pretrained(model_name_or_path)
-    return AutoModelForCausalLM.from_config(cfg)
+    model_kwargs = {}
+    if bf16:
+        model_kwargs["torch_dtype"] = torch.bfloat16
+    attn_impl = _resolve_attn_implementation(prefer_flash_attention_2)
+    if attn_impl is not None:
+        model_kwargs["attn_implementation"] = attn_impl
+    return AutoModelForCausalLM.from_config(cfg, **model_kwargs)
 
 
-def _load_pretrained_model(model_name_or_path: str):
-    return AutoModelForCausalLM.from_pretrained(model_name_or_path)
+def _load_pretrained_model(
+    model_name_or_path: str,
+    *,
+    bf16: bool = False,
+    prefer_flash_attention_2: bool = True,
+):
+    model_kwargs = {}
+    if bf16:
+        model_kwargs["torch_dtype"] = torch.bfloat16
+    attn_impl = _resolve_attn_implementation(prefer_flash_attention_2)
+    if attn_impl is not None:
+        model_kwargs["attn_implementation"] = attn_impl
+    return AutoModelForCausalLM.from_pretrained(model_name_or_path, **model_kwargs)
 
 
 def _copy_matching_weights(source: torch.nn.Module, target: torch.nn.Module) -> None:
@@ -81,10 +117,16 @@ def _apply_prepretrain_projection(
     embedding_transfer_model_path: str | None,
     *,
     copy_non_embedding_weights: bool = False,
+    bf16: bool = False,
+    prefer_flash_attention_2: bool = True,
 ) -> int:
     if embedding_transfer_model_path is None:
         return 0
-    source_model = _load_pretrained_model(embedding_transfer_model_path)
+    source_model = _load_pretrained_model(
+        embedding_transfer_model_path,
+        bf16=bf16,
+        prefer_flash_attention_2=prefer_flash_attention_2,
+    )
     source_tokenizer = load_saved_tokenizer(embedding_transfer_model_path)
     if copy_non_embedding_weights:
         _copy_matching_weights(source_model, target_model)
@@ -174,6 +216,12 @@ def run_variant(
     embedding_transfer_model_path: str | None = None,
     step_progress_desc: str | None = None,
     step_progress_position: int = 1,
+    warmup_steps: int | None = 500,
+    warmup_ratio: float = 0.03,
+    min_lr_rate: float = 0.1,
+    bf16: bool = False,
+    fp16: bool = False,
+    prefer_flash_attention_2: bool = True,
 ) -> dict[str, Any]:
     set_seed(seed)
     if report_to and "wandb" in report_to:
@@ -181,8 +229,16 @@ def run_variant(
         if run_name:
             os.environ["WANDB_NAME"] = run_name
             os.environ["WANDB_RUN_GROUP"] = f"{run_name.rsplit('-', 1)[0]}-inits"
-    model = _build_model(model_name_or_path)
+    model = _build_model(
+        model_name_or_path,
+        bf16=bf16,
+        prefer_flash_attention_2=prefer_flash_attention_2,
+    )
     model.resize_token_embeddings(len(tokenizer))
+    max_length = int(block_size)
+    model_ctx = getattr(model.config, "max_position_embeddings", None)
+    if model_ctx is not None:
+        max_length = min(max_length, int(model_ctx))
 
     copied_embedding_rows = 0
     if variant == "weight_transfer":
@@ -193,6 +249,8 @@ def run_variant(
                 target_tokenizer=tokenizer,
                 embedding_transfer_model_path=embedding_transfer_model_path or transfer_model_path,
                 copy_non_embedding_weights=False,
+                bf16=bf16,
+                prefer_flash_attention_2=prefer_flash_attention_2,
             )
         else:
             if transfer_model_path is None:
@@ -202,6 +260,8 @@ def run_variant(
                 target_tokenizer=tokenizer,
                 embedding_transfer_model_path=transfer_model_path,
                 copy_non_embedding_weights=True,
+                bf16=bf16,
+                prefer_flash_attention_2=prefer_flash_attention_2,
             )
 
     if variant.startswith("platonic"):
@@ -217,12 +277,23 @@ def run_variant(
             target_tokenizer=tokenizer,
             embedding_transfer_model_path=embedding_transfer_model_path,
             copy_non_embedding_weights=False,
+            bf16=bf16,
+            prefer_flash_attention_2=prefer_flash_attention_2,
         )
+
+    scheduler_kwargs: dict[str, Any] = {
+        "lr_scheduler_type": "cosine_with_min_lr",
+        "lr_scheduler_kwargs": {"min_lr_rate": float(min_lr_rate)},
+    }
+    if warmup_steps is not None:
+        scheduler_kwargs["warmup_steps"] = int(warmup_steps)
+    else:
+        scheduler_kwargs["warmup_ratio"] = float(warmup_ratio)
 
     args = SFTConfig(
         output_dir=str(out_dir),
         dataset_text_field="text",
-        max_length=block_size,
+        max_length=max_length,
         num_train_epochs=1,
         max_steps=train_steps,
         per_device_train_batch_size=batch_size,
@@ -234,9 +305,12 @@ def run_variant(
         eval_strategy="steps",
         eval_steps=eval_every or max(10, train_steps // 5),
         seed=seed,
+        bf16=bf16,
+        fp16=fp16,
         disable_tqdm=True,
         log_level="error",
         log_level_replica="error",
+        **scheduler_kwargs,
     )
     callbacks = []
     if step_progress_desc is not None:

@@ -8,20 +8,23 @@ stages:
   prepretrain:
     training:
       model_name_or_path: sshleifer/tiny-gpt2
-      block_size: 128
+      block_size: 2048
       # null => train one full pass over the pre-pretraining dataset
       max_steps: null
       per_device_train_batch_size: 8
       gradient_accumulation_steps: 1
       learning_rate: 0.0003
+      warmup_steps: 500
       warmup_ratio: 0.03
+      min_lr_rate: 0.1
       weight_decay: 0.01
       save_steps: 1000
       logging_steps: 10
       pretrain_packing: true
-      prepretrain_char_tokenizer: true
-      bf16: false
+      prepretrain_char_tokenizer: false
+      bf16: true
       fp16: false
+      prefer_flash_attention_2: true
       report_to: ["wandb"]
       run_name: dyck_5k_10k-prepretraining
       wandb_project: platonic-init

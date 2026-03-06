@@ -16,6 +16,7 @@ _PAD_TOKEN = "<pad>"
 _UNK_TOKEN = "<unk>"
 _BOS_TOKEN = "<bos>"
 _EOS_TOKEN = "<eos>"
+_REFERENCE_PAD_TOKEN = "<|padding|>"
 
 
 def load_text_dataset(data_path: str) -> Dataset:
@@ -31,7 +32,7 @@ def load_text_dataset(data_path: str) -> Dataset:
 def build_tokenizer(model_name_or_path: str):
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
     if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.add_special_tokens({"pad_token": _REFERENCE_PAD_TOKEN})
     return tokenizer
 
 

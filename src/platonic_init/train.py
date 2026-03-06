@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
+import platform
 from pathlib import Path
 
 import torch
@@ -14,13 +16,31 @@ from .env import load_project_env
 from .paths import prepretraining_root, prepretraining_seed_dir
 
 
+def _resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
+    if not prefer_flash_attention_2:
+        return None
+    if platform.system() == "Darwin":
+        return None
+    if not torch.cuda.is_available():
+        return None
+    if importlib.util.find_spec("flash_attn") is None:
+        return None
+    return "flash_attention_2"
+
+
 def _build_model(config: ExperimentConfig, vocab_size: int, bos_token_id: int, eos_token_id: int, pad_token_id: int):
     base_cfg = AutoConfig.from_pretrained(config.training.model_name_or_path)
     base_cfg.vocab_size = int(vocab_size)
     base_cfg.bos_token_id = int(bos_token_id)
     base_cfg.eos_token_id = int(eos_token_id)
     base_cfg.pad_token_id = int(pad_token_id)
-    model = AutoModelForCausalLM.from_config(base_cfg)
+    model_kwargs = {}
+    if config.training.bf16:
+        model_kwargs["torch_dtype"] = torch.bfloat16
+    attn_impl = _resolve_attn_implementation(config.training.prefer_flash_attention_2)
+    if attn_impl is not None:
+        model_kwargs["attn_implementation"] = attn_impl
+    model = AutoModelForCausalLM.from_config(base_cfg, **model_kwargs)
     return model
 
 
@@ -57,17 +77,32 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         pad_token_id=tokenizer.pad_token_id,
     )
     model.resize_token_embeddings(len(tokenizer))
+    max_length = int(config.training.block_size)
+    model_ctx = getattr(model.config, "max_position_embeddings", None)
+    if model_ctx is not None:
+        max_length = min(max_length, int(model_ctx))
+
+    warmup_steps = config.training.warmup_steps
+    if warmup_steps is None and config.training.max_steps is not None:
+        warmup_steps = int(config.training.max_steps * config.training.warmup_ratio)
+    scheduler_kwargs: dict[str, object] = {
+        "lr_scheduler_type": "cosine_with_min_lr",
+        "lr_scheduler_kwargs": {"min_lr_rate": float(config.training.min_lr_rate)},
+    }
+    if warmup_steps is not None:
+        scheduler_kwargs["warmup_steps"] = int(warmup_steps)
+    else:
+        scheduler_kwargs["warmup_ratio"] = float(config.training.warmup_ratio)
 
     args = SFTConfig(
         output_dir=output_dir,
         dataset_text_field="text",
-        max_length=config.training.block_size,
+        max_length=max_length,
         num_train_epochs=1,
         max_steps=config.training.max_steps if config.training.max_steps is not None else -1,
         per_device_train_batch_size=config.training.per_device_train_batch_size,
         gradient_accumulation_steps=config.training.gradient_accumulation_steps,
         learning_rate=config.training.learning_rate,
-        warmup_ratio=config.training.warmup_ratio,
         weight_decay=config.training.weight_decay,
         save_steps=config.training.save_steps,
         logging_steps=config.training.logging_steps,
@@ -77,6 +112,7 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         report_to=config.training.report_to,
         run_name=run_name,
         seed=seed,
+        **scheduler_kwargs,
     )
 
     trainer = SFTTrainer(
