@@ -8,7 +8,8 @@ from typing import Any
 
 from datasets import Dataset
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM, set_seed
+from tqdm import tqdm
+from transformers import AutoConfig, AutoModelForCausalLM, TrainerCallback, set_seed
 from trl import SFTConfig, SFTTrainer
 
 from .config import load_config
@@ -87,6 +88,44 @@ def _configure_wandb_env(wandb_project: str | None, wandb_entity: str | None) ->
         os.environ["WANDB_ENTITY"] = wandb_entity
 
 
+class _TrainStepTqdmCallback(TrainerCallback):
+    def __init__(self, total_steps: int, desc: str, position: int = 1) -> None:
+        self._total_steps = int(total_steps)
+        self._desc = desc
+        self._position = int(position)
+        self._bar: tqdm | None = None
+        self._last_step = 0
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        self._last_step = int(state.global_step or 0)
+        self._bar = tqdm(
+            total=self._total_steps,
+            desc=self._desc,
+            position=self._position,
+            leave=False,
+            dynamic_ncols=True,
+        )
+        if self._last_step > 0:
+            self._bar.update(self._last_step)
+        return control
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if self._bar is None:
+            return control
+        current = int(state.global_step or 0)
+        delta = current - self._last_step
+        if delta > 0:
+            self._bar.update(delta)
+            self._last_step = current
+        return control
+
+    def on_train_end(self, args, state, control, **kwargs):
+        if self._bar is not None:
+            self._bar.close()
+            self._bar = None
+        return control
+
+
 def _extract_eval_curve(log_history: list[dict[str, Any]]) -> list[dict[str, float]]:
     curve: list[dict[str, float]] = []
     for entry in log_history:
@@ -121,10 +160,15 @@ def run_variant(
     eval_every: int | None = None,
     transfer_model_path: str | None = None,
     embedding_transfer_model_path: str | None = None,
+    step_progress_desc: str | None = None,
+    step_progress_position: int = 1,
 ) -> dict[str, Any]:
     set_seed(seed)
     if report_to and "wandb" in report_to:
         _configure_wandb_env(wandb_project=wandb_project, wandb_entity=wandb_entity)
+        if run_name:
+            os.environ["WANDB_NAME"] = run_name
+            os.environ["WANDB_RUN_GROUP"] = f"{run_name.rsplit('-', 1)[0]}-inits"
     model = _build_model(model_name_or_path)
     model.resize_token_embeddings(len(tokenizer))
 
@@ -165,17 +209,30 @@ def run_variant(
         report_to=report_to or [],
         run_name=run_name,
         save_strategy="no",
-        logging_steps=10,
+        logging_strategy="no",
         eval_strategy="steps",
         eval_steps=eval_every or max(10, train_steps // 5),
         seed=seed,
+        disable_tqdm=True,
+        log_level="error",
+        log_level_replica="error",
     )
+    callbacks = []
+    if step_progress_desc is not None:
+        callbacks.append(
+            _TrainStepTqdmCallback(
+                total_steps=train_steps,
+                desc=step_progress_desc,
+                position=step_progress_position,
+            )
+        )
     trainer = SFTTrainer(
         model=model,
         args=args,
         processing_class=tokenizer,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
+        callbacks=callbacks or None,
     )
     initial_metrics = trainer.evaluate()
     train_result = trainer.train()
@@ -213,6 +270,10 @@ def run_variant(
         "eval_curve": deduped_curve,
         "copied_embedding_rows": int(copied_embedding_rows),
     }
+    if report_to and "wandb" in report_to:
+        import wandb
+
+        wandb.finish()
     return out
 
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from tqdm import tqdm
 
 from .analytic import fit_analytic_subspace
 from .analyze import _load_state_dict, build_summary, tensorwise_pca
@@ -270,92 +271,84 @@ def _pretrain_stage(
         raise FileNotFoundError(f"Missing transfer checkpoint for seed {args.transfer_seed}: {transfer_seed_path}")
     transfer_model_path = str(transfer_seed_path)
 
-    results = []
-    random_result = run_variant(
-        variant="random",
-        model_name_or_path=cfg.training.model_name_or_path,
-        tokenizer=tokenizer,
-        train_ds=train_ds,
-        eval_ds=eval_ds,
-        out_dir=eval_basis_root / "random",
-        train_steps=args.eval_steps,
-        batch_size=cfg.training.per_device_train_batch_size,
-        learning_rate=cfg.training.learning_rate,
-        block_size=cfg.training.block_size,
-        seed=args.seed,
-        analytic_subspace=None,
-        latent_seed=args.seed + 100,
-        latent_scale=1.0,
-        report_to=cfg.training.report_to,
-        run_name=f"{cfg.sweep.experiment_name}-init-eval-random",
-        wandb_project=cfg.training.wandb_project,
-        wandb_entity=cfg.training.wandb_entity,
-        eval_every=args.eval_every,
-        embedding_transfer_model_path=transfer_model_path,
-    )
-    random_result["label"] = "random"
-    random_result["basis"] = None
-    random_result["init_mode"] = "random"
-    results.append(random_result)
-
-    platonic_variant = "platonic_mean" if args.init_mode == "mean" else "platonic_sampled"
     fit_names = [b.name for b in _selected_fit_blocks(cfg, args)]
+    jobs: list[dict[str, Any]] = [
+        {
+            "label": "random",
+            "variant": "random",
+            "basis": None,
+            "init_mode": "random",
+            "out_name": "random",
+            "run_name": f"{cfg.sweep.experiment_name}-init-eval-random",
+            "analytic_subspace": None,
+            "transfer_model_path": None,
+        }
+    ]
+    platonic_variant = "platonic_mean" if args.init_mode == "mean" else "platonic_sampled"
     for fit_name in fit_names:
-        basis_result = run_variant(
-            variant=platonic_variant,
-            model_name_or_path=cfg.training.model_name_or_path,
-            tokenizer=tokenizer,
-            train_ds=train_ds,
-            eval_ds=eval_ds,
-            out_dir=eval_basis_root / fit_name,
-            train_steps=args.eval_steps,
-            batch_size=cfg.training.per_device_train_batch_size,
-            learning_rate=cfg.training.learning_rate,
-            block_size=cfg.training.block_size,
-            seed=args.seed,
-            analytic_subspace=basis_subspaces[fit_name],
-            latent_seed=args.seed + 100,
-            latent_scale=1.0,
-            report_to=cfg.training.report_to,
-            run_name=f"{cfg.sweep.experiment_name}-init-eval-{fit_name}-{args.init_mode}",
-            wandb_project=cfg.training.wandb_project,
-            wandb_entity=cfg.training.wandb_entity,
-            eval_every=args.eval_every,
-            embedding_transfer_model_path=transfer_model_path,
+        jobs.append(
+            {
+                "label": fit_name,
+                "variant": platonic_variant,
+                "basis": fit_name,
+                "init_mode": args.init_mode,
+                "out_name": fit_name,
+                "run_name": f"{cfg.sweep.experiment_name}-init-eval-{fit_name}-{args.init_mode}",
+                "analytic_subspace": basis_subspaces[fit_name],
+                "transfer_model_path": None,
+            }
         )
-        basis_result["label"] = fit_name
-        basis_result["basis"] = fit_name
-        basis_result["init_mode"] = args.init_mode
-        results.append(basis_result)
-
     if not args.skip_transfer:
-        transfer_result = run_variant(
-            variant="weight_transfer",
+        jobs.append(
+            {
+                "label": f"weight_transfer_seed_{args.transfer_seed}",
+                "variant": "weight_transfer",
+                "basis": None,
+                "init_mode": "transfer",
+                "out_name": "weight_transfer",
+                "run_name": f"{cfg.sweep.experiment_name}-init-eval-weight-transfer-seed{args.transfer_seed}",
+                "analytic_subspace": None,
+                "transfer_model_path": transfer_model_path,
+            }
+        )
+
+    results = []
+    top_bar = tqdm(total=len(jobs), desc="pretraining 0/0", position=0, leave=True, dynamic_ncols=True)
+    for i, job in enumerate(jobs, start=1):
+        label = job["label"]
+        top_bar.set_description(f"pretraining {i - 1}/{len(jobs)} | init={label}")
+        result = run_variant(
+            variant=job["variant"],
             model_name_or_path=cfg.training.model_name_or_path,
             tokenizer=tokenizer,
             train_ds=train_ds,
             eval_ds=eval_ds,
-            out_dir=eval_basis_root / "weight_transfer",
+            out_dir=eval_basis_root / job["out_name"],
             train_steps=args.eval_steps,
             batch_size=cfg.training.per_device_train_batch_size,
             learning_rate=cfg.training.learning_rate,
             block_size=cfg.training.block_size,
             seed=args.seed,
-            analytic_subspace=None,
+            analytic_subspace=job["analytic_subspace"],
             latent_seed=args.seed + 100,
             latent_scale=1.0,
             report_to=cfg.training.report_to,
-            run_name=f"{cfg.sweep.experiment_name}-init-eval-weight-transfer-seed{args.transfer_seed}",
+            run_name=job["run_name"],
             wandb_project=cfg.training.wandb_project,
             wandb_entity=cfg.training.wandb_entity,
             eval_every=args.eval_every,
-            transfer_model_path=transfer_model_path,
+            transfer_model_path=job["transfer_model_path"],
             embedding_transfer_model_path=transfer_model_path,
+            step_progress_desc=f"steps | init={label}",
+            step_progress_position=1,
         )
-        transfer_result["label"] = f"weight_transfer_seed_{args.transfer_seed}"
-        transfer_result["basis"] = None
-        transfer_result["init_mode"] = "transfer"
-        results.append(transfer_result)
+        result["label"] = label
+        result["basis"] = job["basis"]
+        result["init_mode"] = job["init_mode"]
+        results.append(result)
+        top_bar.update(1)
+    top_bar.set_description(f"pretraining {len(jobs)}/{len(jobs)} | done")
+    top_bar.close()
 
     with (pretraining_artifacts / "init_eval.json").open("w", encoding="utf-8") as f:
         json.dump({"results": results}, f, indent=2)
