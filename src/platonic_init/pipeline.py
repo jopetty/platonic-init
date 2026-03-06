@@ -191,12 +191,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--eval-steps",
         type=int,
-        default=200,
+        default=None,
         help="Downstream fine-tuning steps used to evaluate initialization quality",
     )
     p.add_argument("--eval-ratio", type=float, default=0.1)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--eval-every", type=int, default=10)
+    p.add_argument("--eval-every", type=int, default=None)
     p.add_argument(
         "--init-mode",
         type=str,
@@ -492,6 +492,10 @@ def main() -> None:
     load_project_env()
     args = parse_args()
     cfg = load_config(args.config)
+    if args.eval_steps is None:
+        args.eval_steps = int(cfg.stages.pretrain_eval.train_steps)
+    if args.eval_every is None:
+        args.eval_every = int(cfg.stages.pretrain_eval.eval_every)
 
     run_prepretrain, run_fit_initializations, run_pretrain = _stage_plan(args.stages)
 

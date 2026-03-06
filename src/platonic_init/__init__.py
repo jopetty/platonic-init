@@ -8,4 +8,5 @@ __all__ = [
     "analytic",
     "init_fn",
     "rebasin",
+    "aesthetics",
 ]

@@ -107,6 +107,8 @@ class FitInitializationsStageConfig:
 @dataclass
 class PretrainEvalStageConfig:
     init_eval_data: InitEvalDataConfig = field(default_factory=InitEvalDataConfig)
+    train_steps: int = 200
+    eval_every: int = 10
 
 
 @dataclass

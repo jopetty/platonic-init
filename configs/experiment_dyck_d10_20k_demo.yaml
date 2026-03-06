@@ -27,7 +27,7 @@ stages:
       wandb_project: platonic-init
       wandb_entity: null
     sweep:
-      seeds: [0, 1]
+      seeds: [0, 1, 2, 3, 4, 5, 6, 7]
       output_root: runs
       experiment_name: dyck_d10_20k_demo
   fit_initializations:
@@ -46,10 +46,15 @@ stages:
       - name: chebyshev_d24
         basis_type: chebyshev
         chebyshev_degree: 24
-      - name: fourier
-        basis_type: fourier
-        fourier_degree: 6
+      - name: chebyshev_d48
+        basis_type: chebyshev
+        chebyshev_degree: 48
+      # - name: fourier
+      #   basis_type: fourier
+      #   fourier_degree: 6
   pretrain_eval:
+    train_steps: 500
+    eval_every: 10
     init_eval_data:
       source: hf
       dataset_name: wikitext
