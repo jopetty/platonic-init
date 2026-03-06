@@ -21,6 +21,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--transfer-seed", type=int, default=0)
     p.add_argument("--skip-transfer", action="store_true")
+    p.add_argument("--skip-random", action="store_true")
+    p.add_argument("--skip-fits", action="store_true")
     return p.parse_args()
 
 
@@ -57,6 +59,10 @@ def main() -> None:
         cmd.extend(["--curves-out", args.out])
     if args.skip_transfer:
         cmd.append("--skip-transfer")
+    if args.skip_random:
+        cmd.append("--skip-random")
+    if args.skip_fits:
+        cmd.append("--skip-fits")
     subprocess.run(cmd, check=True)
 
 

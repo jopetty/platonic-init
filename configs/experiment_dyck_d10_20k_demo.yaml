@@ -43,6 +43,9 @@ stages:
       - name: chebyshev
         basis_type: chebyshev
         chebyshev_degree: 12
+      - name: chebyshev_d24
+        basis_type: chebyshev
+        chebyshev_degree: 24
       - name: fourier
         basis_type: fourier
         fourier_degree: 6

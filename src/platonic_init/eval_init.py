@@ -40,6 +40,17 @@ def _copy_matching_weights(source: torch.nn.Module, target: torch.nn.Module) -> 
     target.load_state_dict(filtered, strict=False)
 
 
+def _copy_matching_weights_from_state(source_state: dict[str, torch.Tensor], target: torch.nn.Module) -> None:
+    target_state = target.state_dict()
+    filtered: dict[str, torch.Tensor] = {}
+    for k, v in source_state.items():
+        if k in {"transformer.wte.weight", "lm_head.weight"}:
+            continue
+        if k in target_state and target_state[k].shape == v.shape and torch.is_floating_point(v):
+            filtered[k] = v.detach().to(dtype=target_state[k].dtype, device=target_state[k].device)
+    target.load_state_dict(filtered, strict=False)
+
+
 def _project_shared_token_embeddings(source_model, source_tokenizer, target_model, target_tokenizer) -> int:
     source_vocab = source_tokenizer.get_vocab()
     target_vocab = target_tokenizer.get_vocab()
@@ -159,6 +170,7 @@ def run_variant(
     wandb_entity: str | None = None,
     eval_every: int | None = None,
     transfer_model_path: str | None = None,
+    transfer_state_dict: dict[str, torch.Tensor] | None = None,
     embedding_transfer_model_path: str | None = None,
     step_progress_desc: str | None = None,
     step_progress_position: int = 1,
@@ -174,14 +186,23 @@ def run_variant(
 
     copied_embedding_rows = 0
     if variant == "weight_transfer":
-        if transfer_model_path is None:
-            raise ValueError("transfer_model_path is required for weight_transfer variant")
-        copied_embedding_rows = _apply_prepretrain_projection(
-            target_model=model,
-            target_tokenizer=tokenizer,
-            embedding_transfer_model_path=transfer_model_path,
-            copy_non_embedding_weights=True,
-        )
+        if transfer_state_dict is not None:
+            _copy_matching_weights_from_state(transfer_state_dict, model)
+            copied_embedding_rows = _apply_prepretrain_projection(
+                target_model=model,
+                target_tokenizer=tokenizer,
+                embedding_transfer_model_path=embedding_transfer_model_path or transfer_model_path,
+                copy_non_embedding_weights=False,
+            )
+        else:
+            if transfer_model_path is None:
+                raise ValueError("transfer_state_dict or transfer_model_path is required for weight_transfer variant")
+            copied_embedding_rows = _apply_prepretrain_projection(
+                target_model=model,
+                target_tokenizer=tokenizer,
+                embedding_transfer_model_path=transfer_model_path,
+                copy_non_embedding_weights=True,
+            )
 
     if variant.startswith("platonic"):
         if analytic_subspace is None:

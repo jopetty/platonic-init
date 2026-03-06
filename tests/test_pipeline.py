@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from platonic_init.config import AnalyticFitBlockConfig, ExperimentConfig
-from platonic_init.pipeline import _doctor_checks, _stage_plan
+from platonic_init.pipeline import _doctor_checks, _merge_results_by_label, _stage_plan
 from platonic_init.paths import basis_sweep_dir, prepretraining_seed_dir
 
 
@@ -80,9 +80,25 @@ class PipelineDoctorTests(unittest.TestCase):
             bs_dir.mkdir(parents=True, exist_ok=True)
             for basis in ("chebyshev", "fourier"):
                 (bs_dir / f"analytic_subspace_{basis}.pt").touch()
+            (bs_dir / "merged_rebasin_state.pt").touch()
             args = self._args(fit_names=["chebyshev", "fourier"])
             issues = _doctor_checks(cfg, args, run_fit_initializations=False, run_pretrain=True)
         self.assertEqual(issues, [])
+
+
+class PipelineResultMergeTests(unittest.TestCase):
+    def test_merge_results_by_label_replaces_existing_and_preserves_others(self) -> None:
+        existing = [
+            {"label": "random", "final_eval_loss": 9.0},
+            {"label": "chebyshev", "final_eval_loss": 8.0},
+            {"label": "weight_transfer", "final_eval_loss": 7.0},
+        ]
+        updated = [
+            {"label": "weight_transfer", "final_eval_loss": 6.5},
+        ]
+        merged = _merge_results_by_label(existing, updated)
+        self.assertEqual([x["label"] for x in merged], ["random", "chebyshev", "weight_transfer"])
+        self.assertEqual(merged[-1]["final_eval_loss"], 6.5)
 
 
 if __name__ == "__main__":

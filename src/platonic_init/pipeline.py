@@ -30,6 +30,7 @@ STAGE_PREPRETRAIN = "prepretrain"
 STAGE_FIT_INITIALIZATIONS = "fit_initializations"
 STAGE_PRETRAIN = "pretrain"
 ALL_STAGES = [STAGE_PREPRETRAIN, STAGE_FIT_INITIALIZATIONS, STAGE_PRETRAIN]
+MERGED_TRANSFER_STATE_NAME = "merged_rebasin_state.pt"
 
 
 def _default_checkpoint_dirs(cfg) -> list[Path]:
@@ -70,6 +71,26 @@ def _fit_block_slug(name: str) -> str:
     return slug
 
 
+def _build_merged_state(states: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+    if not states:
+        raise ValueError("Cannot merge empty state list")
+    merged: dict[str, torch.Tensor] = {}
+    keys = sorted(states[0].keys())
+    for key in keys:
+        ref = states[0][key]
+        if not torch.is_tensor(ref):
+            continue
+        same_shape = all(key in s and tuple(s[key].shape) == tuple(ref.shape) for s in states)
+        if not same_shape:
+            continue
+        if torch.is_floating_point(ref):
+            stacked = torch.stack([s[key].detach().to(dtype=torch.float32, device="cpu") for s in states], dim=0)
+            merged[key] = stacked.mean(dim=0).to(dtype=ref.dtype)
+        else:
+            merged[key] = ref.detach().clone()
+    return merged
+
+
 def _selected_fit_blocks(cfg: Any, args: argparse.Namespace) -> list[AnalyticFitBlockConfig]:
     all_blocks = list(resolve_analytic_fit_blocks(cfg))
     if not all_blocks:
@@ -94,6 +115,30 @@ def _selected_fit_blocks(cfg: Any, args: argparse.Namespace) -> list[AnalyticFit
     return [block for block in all_blocks if block.name in selected_set]
 
 
+def _run_fit_jobs(args: argparse.Namespace) -> bool:
+    return not bool(getattr(args, "skip_fits", False))
+
+
+def _merge_results_by_label(existing: list[dict[str, Any]], updated: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_label: dict[str, dict[str, Any]] = {}
+    ordered_labels: list[str] = []
+    for row in existing:
+        label = str(row.get("label", ""))
+        if not label:
+            continue
+        if label not in by_label:
+            ordered_labels.append(label)
+        by_label[label] = row
+    for row in updated:
+        label = str(row.get("label", ""))
+        if not label:
+            continue
+        if label not in by_label:
+            ordered_labels.append(label)
+        by_label[label] = row
+    return [by_label[label] for label in ordered_labels]
+
+
 def _doctor_checks(cfg, args, run_fit_initializations: bool, run_pretrain: bool) -> list[str]:
     issues: list[str] = []
     if run_fit_initializations:
@@ -105,7 +150,7 @@ def _doctor_checks(cfg, args, run_fit_initializations: bool, run_pretrain: bool)
             transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
             if not transfer_seed_path.exists():
                 issues.append(f"Missing transfer checkpoint seed_{args.transfer_seed}: {transfer_seed_path}")
-        if not run_fit_initializations:
+        if not run_fit_initializations and _run_fit_jobs(args):
             bs_dir = basis_sweep_dir(cfg, args.basis_dir)
             for block in _selected_fit_blocks(cfg, args):
                 slug = _fit_block_slug(block.name)
@@ -115,6 +160,21 @@ def _doctor_checks(cfg, args, run_fit_initializations: bool, run_pretrain: bool)
                         f"Missing analytic subspace for fit '{block.name}': {p} "
                         "(run fit_initializations stage first)"
                     )
+            if not args.skip_transfer:
+                merged_path = bs_dir / MERGED_TRANSFER_STATE_NAME
+                if not merged_path.exists():
+                    issues.append(
+                        f"Missing merged rebasin transfer state: {merged_path} "
+                        "(run fit_initializations stage first)"
+                    )
+        elif not run_fit_initializations and not args.skip_transfer:
+            bs_dir = basis_sweep_dir(cfg, args.basis_dir)
+            merged_path = bs_dir / MERGED_TRANSFER_STATE_NAME
+            if not merged_path.exists():
+                issues.append(
+                    f"Missing merged rebasin transfer state: {merged_path} "
+                    "(run fit_initializations stage first)"
+                )
     return issues
 
 
@@ -146,6 +206,16 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--transfer-seed", type=int, default=0)
     p.add_argument("--skip-transfer", action="store_true")
+    p.add_argument(
+        "--skip-random",
+        action="store_true",
+        help="Skip the random-initialization control during pretrain stage",
+    )
+    p.add_argument(
+        "--skip-fits",
+        action="store_true",
+        help="Skip analytic-fit initialization variants during pretrain stage",
+    )
     p.add_argument(
         "--fit-names",
         nargs="+",
@@ -200,6 +270,11 @@ def _fit_initializations_stage(
         )
         with (analysis_artifacts / "rebasin_report.json").open("w", encoding="utf-8") as f:
             json.dump(rebasin_report, f, indent=2)
+
+    merged_state = _build_merged_state(states)
+    torch.save(merged_state, analysis_artifacts / MERGED_TRANSFER_STATE_NAME)
+    torch.save(merged_state, basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME)
+
     subspace = tensorwise_pca(states, cfg.analysis)
 
     subspace_path = analysis_artifacts / "weight_subspace.pt"
@@ -270,20 +345,31 @@ def _pretrain_stage(
     if not transfer_seed_path.exists():
         raise FileNotFoundError(f"Missing transfer checkpoint for seed {args.transfer_seed}: {transfer_seed_path}")
     transfer_model_path = str(transfer_seed_path)
+    merged_state_path = basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME
+    merged_transfer_state = None
+    if not args.skip_transfer:
+        if not merged_state_path.exists():
+            raise FileNotFoundError(
+                f"Missing merged rebasin transfer state: {merged_state_path}. "
+                "Run fit_initializations stage first or include 'fit_initializations' in --stages."
+            )
+        merged_transfer_state = torch.load(merged_state_path, map_location="cpu")
 
-    fit_names = [b.name for b in _selected_fit_blocks(cfg, args)]
-    jobs: list[dict[str, Any]] = [
-        {
-            "label": "random",
-            "variant": "random",
-            "basis": None,
-            "init_mode": "random",
-            "out_name": "random",
-            "run_name": f"{cfg.sweep.experiment_name}-init-eval-random",
-            "analytic_subspace": None,
-            "transfer_model_path": None,
-        }
-    ]
+    fit_names = [b.name for b in _selected_fit_blocks(cfg, args)] if _run_fit_jobs(args) else []
+    jobs: list[dict[str, Any]] = []
+    if not args.skip_random:
+        jobs.append(
+            {
+                "label": "random",
+                "variant": "random",
+                "basis": None,
+                "init_mode": "random",
+                "out_name": "random",
+                "run_name": f"{cfg.sweep.experiment_name}-init-eval-random",
+                "analytic_subspace": None,
+                "transfer_model_path": None,
+            }
+        )
     platonic_variant = "platonic_mean" if args.init_mode == "mean" else "platonic_sampled"
     for fit_name in fit_names:
         jobs.append(
@@ -301,7 +387,7 @@ def _pretrain_stage(
     if not args.skip_transfer:
         jobs.append(
             {
-                "label": f"weight_transfer_seed_{args.transfer_seed}",
+                "label": "weight_transfer",
                 "variant": "weight_transfer",
                 "basis": None,
                 "init_mode": "transfer",
@@ -309,7 +395,14 @@ def _pretrain_stage(
                 "run_name": f"{cfg.sweep.experiment_name}-init-eval-weight-transfer-seed{args.transfer_seed}",
                 "analytic_subspace": None,
                 "transfer_model_path": transfer_model_path,
+                "transfer_state_dict": merged_transfer_state,
             }
+        )
+
+    if not jobs:
+        raise ValueError(
+            "No pretrain initialization jobs selected. "
+            "Unset --skip-random/--skip-fits/--skip-transfer to select at least one initialization."
         )
 
     results = []
@@ -338,6 +431,7 @@ def _pretrain_stage(
             wandb_entity=cfg.training.wandb_entity,
             eval_every=args.eval_every,
             transfer_model_path=job["transfer_model_path"],
+            transfer_state_dict=job.get("transfer_state_dict"),
             embedding_transfer_model_path=transfer_model_path,
             step_progress_desc=f"steps | init={label}",
             step_progress_position=1,
@@ -350,26 +444,45 @@ def _pretrain_stage(
     top_bar.set_description(f"pretraining {len(jobs)}/{len(jobs)} | done")
     top_bar.close()
 
-    with (pretraining_artifacts / "init_eval.json").open("w", encoding="utf-8") as f:
-        json.dump({"results": results}, f, indent=2)
+    init_eval_path = pretraining_artifacts / "init_eval.json"
+    merged_results = results
+    if init_eval_path.exists():
+        try:
+            existing_payload = json.loads(init_eval_path.read_text(encoding="utf-8"))
+            existing_results = existing_payload.get("results", [])
+            if isinstance(existing_results, list):
+                merged_results = _merge_results_by_label(existing_results, results)
+        except Exception:
+            merged_results = results
+    with init_eval_path.open("w", encoding="utf-8") as f:
+        json.dump({"results": merged_results}, f, indent=2)
     curves_out = (
         Path(args.curves_out)
         if args.curves_out is not None
         else pretraining_artifacts / "init_eval_basis_curves.json"
     )
     curves_out.parent.mkdir(parents=True, exist_ok=True)
+    curves_payload = {
+        "config": args.config,
+        "basis_dir": str(basis_sweep_artifacts),
+        "fit_names": fit_names,
+        "init_mode": args.init_mode,
+        "train_steps": args.eval_steps,
+        "eval_every": args.eval_every,
+        "seed": args.seed,
+        "results": merged_results,
+    }
+    if curves_out.exists():
+        try:
+            old_payload = json.loads(curves_out.read_text(encoding="utf-8"))
+            old_results = old_payload.get("results", [])
+            if isinstance(old_results, list):
+                curves_payload["results"] = _merge_results_by_label(old_results, results)
+        except Exception:
+            pass
     with curves_out.open("w", encoding="utf-8") as f:
         json.dump(
-            {
-                "config": args.config,
-                "basis_dir": str(basis_sweep_artifacts),
-                "fit_names": fit_names,
-                "init_mode": args.init_mode,
-                "train_steps": args.eval_steps,
-                "eval_every": args.eval_every,
-                "seed": args.seed,
-                "results": results,
-            },
+            curves_payload,
             f,
             indent=2,
         )
@@ -405,6 +518,8 @@ def main() -> None:
     basis_sweep_artifacts.mkdir(parents=True, exist_ok=True)
     basis_subspaces: dict[str, dict] = {}
 
+    needs_fit_subspaces = run_pretrain and _run_fit_jobs(args)
+
     if run_fit_initializations:
         basis_subspaces = _fit_initializations_stage(
             cfg=cfg,
@@ -412,7 +527,7 @@ def main() -> None:
             analysis_artifacts=analysis_artifacts,
             basis_sweep_artifacts=basis_sweep_artifacts,
         )
-    elif run_pretrain:
+    elif needs_fit_subspaces:
         basis_subspaces = _load_basis_subspaces_stage(cfg=cfg, args=args, basis_sweep_artifacts=basis_sweep_artifacts)
 
     if not run_pretrain:
