@@ -11,7 +11,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--config", type=str, default="configs/experiment_dyck_d10_20k_demo.yaml")
     p.add_argument("--basis-dir", type=str, default=None)
-    p.add_argument("--basis", nargs="+", default=["chebyshev", "fourier", "rbf", "poly_exp"])
+    p.add_argument("--fit-names", nargs="+", default=None)
+    p.add_argument("--basis", nargs="+", default=None, help="Legacy alias for --fit-names")
     p.add_argument("--init-mode", type=str, default="sampled", choices=["mean", "sampled"])
     p.add_argument("--out", type=str, default=None)
     p.add_argument("--train-steps", type=int, default=200)
@@ -46,9 +47,10 @@ def main() -> None:
         args.init_mode,
         "--transfer-seed",
         str(args.transfer_seed),
-        "--basis",
-        *args.basis,
     ]
+    selected = args.fit_names if args.fit_names is not None else args.basis
+    if selected:
+        cmd.extend(["--fit-names", *selected])
     if args.basis_dir is not None:
         cmd.extend(["--basis-dir", args.basis_dir])
     if args.out is not None:

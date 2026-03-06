@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +10,7 @@ import torch
 
 from .analytic import fit_analytic_subspace
 from .analyze import _load_state_dict, build_summary, tensorwise_pca
-from .config import load_config
+from .config import AnalyticFitBlockConfig, load_config, resolve_analytic_fit_blocks
 from .eval_init import run_variant
 from .data import build_tokenizer, load_init_eval_datasets
 from .env import load_project_env
@@ -62,6 +62,37 @@ def _stage_plan(stages: list[str]) -> tuple[bool, bool, bool]:
     return run_prepretrain, run_fit_initializations, run_pretrain
 
 
+def _fit_block_slug(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip()).strip("_").lower()
+    if not slug:
+        raise ValueError(f"Invalid analytic fit block name: {name!r}")
+    return slug
+
+
+def _selected_fit_blocks(cfg: Any, args: argparse.Namespace) -> list[AnalyticFitBlockConfig]:
+    all_blocks = list(resolve_analytic_fit_blocks(cfg))
+    if not all_blocks:
+        raise ValueError("No analytic fit blocks configured")
+
+    names = [b.name for b in all_blocks]
+    if len(set(names)) != len(names):
+        raise ValueError(f"Duplicate analytic fit block names in config: {names}")
+
+    slugs = [_fit_block_slug(b.name) for b in all_blocks]
+    if len(set(slugs)) != len(slugs):
+        raise ValueError(f"Analytic fit block names collide after slugify: {names}")
+
+    selected = args.fit_names if args.fit_names is not None else args.basis
+    if not selected:
+        return all_blocks
+
+    selected_set = set(selected)
+    unknown = [name for name in selected if name not in set(names)]
+    if unknown:
+        raise ValueError(f"Unknown fit names requested: {unknown}. Available: {names}")
+    return [block for block in all_blocks if block.name in selected_set]
+
+
 def _doctor_checks(cfg, args, run_fit_initializations: bool, run_pretrain: bool) -> list[str]:
     issues: list[str] = []
     if run_fit_initializations:
@@ -75,11 +106,12 @@ def _doctor_checks(cfg, args, run_fit_initializations: bool, run_pretrain: bool)
                 issues.append(f"Missing transfer checkpoint seed_{args.transfer_seed}: {transfer_seed_path}")
         if not run_fit_initializations:
             bs_dir = basis_sweep_dir(cfg, args.basis_dir)
-            for basis in args.basis:
-                p = bs_dir / f"analytic_subspace_{basis}.pt"
+            for block in _selected_fit_blocks(cfg, args):
+                slug = _fit_block_slug(block.name)
+                p = bs_dir / f"analytic_subspace_{slug}.pt"
                 if not p.exists():
                     issues.append(
-                        f"Missing analytic subspace for '{basis}': {p} "
+                        f"Missing analytic subspace for fit '{block.name}': {p} "
                         "(run fit_initializations stage first)"
                     )
     return issues
@@ -113,7 +145,18 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--transfer-seed", type=int, default=0)
     p.add_argument("--skip-transfer", action="store_true")
-    p.add_argument("--basis", nargs="+", default=["chebyshev", "fourier", "rbf", "poly_exp"])
+    p.add_argument(
+        "--fit-names",
+        nargs="+",
+        default=None,
+        help="Optional subset of analytic fit block names from config to evaluate",
+    )
+    p.add_argument(
+        "--basis",
+        nargs="+",
+        default=None,
+        help="Legacy alias for --fit-names",
+    )
     p.add_argument(
         "--basis-dir",
         type=str,
@@ -163,34 +206,44 @@ def _fit_initializations_stage(
     with (analysis_artifacts / "weight_subspace_summary.json").open("w", encoding="utf-8") as f:
         json.dump(build_summary(subspace), f, indent=2)
 
-    analytic_subspace, fit_report = fit_analytic_subspace(subspace, cfg.analytic_fit)
-    analytic_path = analysis_artifacts / "analytic_subspace.pt"
-    torch.save(analytic_subspace, analytic_path)
-    with (analysis_artifacts / "analytic_fit_report.json").open("w", encoding="utf-8") as f:
-        json.dump(fit_report, f, indent=2)
-
+    fit_blocks = _selected_fit_blocks(cfg, args)
     basis_subspaces: dict[str, dict] = {}
-    for basis in args.basis:
-        basis_fit_cfg = copy.deepcopy(cfg.analytic_fit)
-        basis_fit_cfg.basis_type = basis
-        basis_subspace, basis_report = fit_analytic_subspace(subspace, basis_fit_cfg)
-        torch.save(basis_subspace, basis_sweep_artifacts / f"analytic_subspace_{basis}.pt")
-        with (basis_sweep_artifacts / f"analytic_fit_report_{basis}.json").open("w", encoding="utf-8") as f:
+    fit_manifest: dict[str, dict[str, str]] = {}
+    for i, block in enumerate(fit_blocks):
+        fit_name = block.name
+        slug = _fit_block_slug(fit_name)
+        fit_cfg = block.to_fit_config()
+        basis_subspace, basis_report = fit_analytic_subspace(subspace, fit_cfg)
+        torch.save(basis_subspace, basis_sweep_artifacts / f"analytic_subspace_{slug}.pt")
+        with (basis_sweep_artifacts / f"analytic_fit_report_{slug}.json").open("w", encoding="utf-8") as f:
             json.dump(basis_report, f, indent=2)
-        basis_subspaces[basis] = basis_subspace
+        basis_subspaces[fit_name] = basis_subspace
+        fit_manifest[fit_name] = {"slug": slug, "basis_type": fit_cfg.basis_type}
+
+        if i == 0:
+            # Backward-compatible single-file outputs; point to first configured fit block.
+            analytic_path = analysis_artifacts / "analytic_subspace.pt"
+            torch.save(basis_subspace, analytic_path)
+            with (analysis_artifacts / "analytic_fit_report.json").open("w", encoding="utf-8") as f:
+                json.dump(basis_report, f, indent=2)
+
+    with (basis_sweep_artifacts / "fit_blocks.json").open("w", encoding="utf-8") as f:
+        json.dump(fit_manifest, f, indent=2)
     return basis_subspaces
 
 
 def _load_basis_subspaces_stage(cfg: Any, args: argparse.Namespace, basis_sweep_artifacts: Path) -> dict[str, dict]:
     basis_subspaces: dict[str, dict] = {}
-    for basis in args.basis:
-        analytic_path = basis_sweep_artifacts / f"analytic_subspace_{basis}.pt"
+    for block in _selected_fit_blocks(cfg, args):
+        fit_name = block.name
+        slug = _fit_block_slug(fit_name)
+        analytic_path = basis_sweep_artifacts / f"analytic_subspace_{slug}.pt"
         if not analytic_path.exists():
             raise FileNotFoundError(
-                f"Missing analytic subspace for basis '{basis}' at {analytic_path}. "
+                f"Missing analytic subspace for fit '{fit_name}' at {analytic_path}. "
                 "Run fit_initializations stage first or include 'fit_initializations' in --stages."
             )
-        basis_subspaces[basis] = torch.load(analytic_path, map_location="cpu")
+        basis_subspaces[fit_name] = torch.load(analytic_path, map_location="cpu")
     return basis_subspaces
 
 
@@ -246,31 +299,32 @@ def _pretrain_stage(
     results.append(random_result)
 
     platonic_variant = "platonic_mean" if args.init_mode == "mean" else "platonic_sampled"
-    for basis in args.basis:
+    fit_names = [b.name for b in _selected_fit_blocks(cfg, args)]
+    for fit_name in fit_names:
         basis_result = run_variant(
             variant=platonic_variant,
             model_name_or_path=cfg.training.model_name_or_path,
             tokenizer=tokenizer,
             train_ds=train_ds,
             eval_ds=eval_ds,
-            out_dir=eval_basis_root / basis,
+            out_dir=eval_basis_root / fit_name,
             train_steps=args.eval_steps,
             batch_size=cfg.training.per_device_train_batch_size,
             learning_rate=cfg.training.learning_rate,
             block_size=cfg.training.block_size,
             seed=args.seed,
-            analytic_subspace=basis_subspaces[basis],
+            analytic_subspace=basis_subspaces[fit_name],
             latent_seed=args.seed + 100,
             latent_scale=1.0,
             report_to=cfg.training.report_to,
-            run_name=f"{cfg.sweep.experiment_name}-init-eval-{basis}-{args.init_mode}",
+            run_name=f"{cfg.sweep.experiment_name}-init-eval-{fit_name}-{args.init_mode}",
             wandb_project=cfg.training.wandb_project,
             wandb_entity=cfg.training.wandb_entity,
             eval_every=args.eval_every,
             embedding_transfer_model_path=transfer_model_path,
         )
-        basis_result["label"] = basis
-        basis_result["basis"] = basis
+        basis_result["label"] = fit_name
+        basis_result["basis"] = fit_name
         basis_result["init_mode"] = args.init_mode
         results.append(basis_result)
 
@@ -316,6 +370,7 @@ def _pretrain_stage(
             {
                 "config": args.config,
                 "basis_dir": str(basis_sweep_artifacts),
+                "fit_names": fit_names,
                 "init_mode": args.init_mode,
                 "train_steps": args.eval_steps,
                 "eval_every": args.eval_every,

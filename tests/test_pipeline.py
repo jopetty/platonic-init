@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from platonic_init.config import ExperimentConfig
+from platonic_init.config import AnalyticFitBlockConfig, ExperimentConfig
 from platonic_init.pipeline import _doctor_checks, _stage_plan
 from platonic_init.paths import basis_sweep_dir, prepretraining_seed_dir
 
@@ -31,7 +31,8 @@ class PipelineDoctorTests(unittest.TestCase):
         defaults = dict(
             skip_transfer=False,
             transfer_seed=0,
-            basis=["chebyshev", "fourier"],
+            fit_names=["chebyshev", "fourier"],
+            basis=None,
             basis_dir=None,
         )
         defaults.update(kwargs)
@@ -39,6 +40,10 @@ class PipelineDoctorTests(unittest.TestCase):
 
     def test_doctor_flags_missing_transfer_checkpoint(self) -> None:
         cfg = ExperimentConfig()
+        cfg.analytic_fit_blocks = [
+            AnalyticFitBlockConfig(name="chebyshev", basis_type="chebyshev"),
+            AnalyticFitBlockConfig(name="fourier", basis_type="fourier"),
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             cfg.sweep.output_root = tmp
             cfg.sweep.experiment_name = "exp_missing_transfer"
@@ -48,6 +53,10 @@ class PipelineDoctorTests(unittest.TestCase):
 
     def test_doctor_flags_missing_basis_subspace(self) -> None:
         cfg = ExperimentConfig()
+        cfg.analytic_fit_blocks = [
+            AnalyticFitBlockConfig(name="chebyshev", basis_type="chebyshev"),
+            AnalyticFitBlockConfig(name="fourier", basis_type="fourier"),
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             cfg.sweep.output_root = tmp
             cfg.sweep.experiment_name = "exp_missing_basis"
@@ -59,6 +68,10 @@ class PipelineDoctorTests(unittest.TestCase):
 
     def test_doctor_ok_for_pretrain_only_when_inputs_exist(self) -> None:
         cfg = ExperimentConfig()
+        cfg.analytic_fit_blocks = [
+            AnalyticFitBlockConfig(name="chebyshev", basis_type="chebyshev"),
+            AnalyticFitBlockConfig(name="fourier", basis_type="fourier"),
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             cfg.sweep.output_root = tmp
             cfg.sweep.experiment_name = "exp_ok"
@@ -67,7 +80,7 @@ class PipelineDoctorTests(unittest.TestCase):
             bs_dir.mkdir(parents=True, exist_ok=True)
             for basis in ("chebyshev", "fourier"):
                 (bs_dir / f"analytic_subspace_{basis}.pt").touch()
-            args = self._args(basis=["chebyshev", "fourier"])
+            args = self._args(fit_names=["chebyshev", "fourier"])
             issues = _doctor_checks(cfg, args, run_fit_initializations=False, run_pretrain=True)
         self.assertEqual(issues, [])
 

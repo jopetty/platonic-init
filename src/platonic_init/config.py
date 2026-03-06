@@ -56,6 +56,22 @@ class AnalyticFitConfig:
 
 
 @dataclass
+class AnalyticFitBlockConfig(AnalyticFitConfig):
+    name: str = "chebyshev"
+
+    def to_fit_config(self) -> AnalyticFitConfig:
+        return AnalyticFitConfig(
+            basis_type=self.basis_type,
+            poly_degree=self.poly_degree,
+            exp_scales=list(self.exp_scales),
+            chebyshev_degree=self.chebyshev_degree,
+            fourier_degree=self.fourier_degree,
+            rbf_num_centers=self.rbf_num_centers,
+            rbf_sigma=self.rbf_sigma,
+        )
+
+
+@dataclass
 class RebasinConfig:
     enabled: bool = True
     max_iter: int = 50
@@ -76,14 +92,41 @@ class InitEvalDataConfig:
 
 
 @dataclass
+class PrepretrainStageConfig:
+    training: TrainingConfig = field(default_factory=TrainingConfig)
+    sweep: SweepConfig = field(default_factory=SweepConfig)
+
+
+@dataclass
+class FitInitializationsStageConfig:
+    analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
+    rebasin: RebasinConfig = field(default_factory=RebasinConfig)
+    fit_blocks: list[AnalyticFitBlockConfig] = field(default_factory=list)
+
+
+@dataclass
+class PretrainEvalStageConfig:
+    init_eval_data: InitEvalDataConfig = field(default_factory=InitEvalDataConfig)
+
+
+@dataclass
+class StagesConfig:
+    prepretrain: PrepretrainStageConfig = field(default_factory=PrepretrainStageConfig)
+    fit_initializations: FitInitializationsStageConfig = field(default_factory=FitInitializationsStageConfig)
+    pretrain_eval: PretrainEvalStageConfig = field(default_factory=PretrainEvalStageConfig)
+
+
+@dataclass
 class ExperimentConfig:
     data_path: str = "data/synthetic.txt"
     training: TrainingConfig = field(default_factory=TrainingConfig)
     sweep: SweepConfig = field(default_factory=SweepConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     analytic_fit: AnalyticFitConfig = field(default_factory=AnalyticFitConfig)
+    analytic_fit_blocks: list[AnalyticFitBlockConfig] = field(default_factory=list)
     rebasin: RebasinConfig = field(default_factory=RebasinConfig)
     init_eval_data: InitEvalDataConfig = field(default_factory=InitEvalDataConfig)
+    stages: StagesConfig = field(default_factory=StagesConfig)
 
 
 def _merge_dataclass(dc_obj: Any, values: dict[str, Any]) -> Any:
@@ -103,7 +146,8 @@ def load_config(path: str | Path) -> ExperimentConfig:
         raise FileNotFoundError(f"Config file not found: {path}")
     with path.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
-    return _merge_dataclass(cfg, raw)
+    cfg = _merge_dataclass(cfg, raw)
+    return _normalize_config(cfg, raw)
 
 
 def save_config(config: ExperimentConfig, path: str | Path) -> None:
@@ -111,3 +155,64 @@ def save_config(config: ExperimentConfig, path: str | Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(asdict(config), f)
+
+
+def _normalize_fit_blocks(items: list[Any], *, prefix: str = "fit") -> list[AnalyticFitBlockConfig]:
+    normalized_blocks: list[AnalyticFitBlockConfig] = []
+    for i, block in enumerate(items):
+        if isinstance(block, AnalyticFitBlockConfig):
+            normalized_blocks.append(block)
+            continue
+        if isinstance(block, dict):
+            merged = _merge_dataclass(AnalyticFitBlockConfig(), block)
+            if not merged.name:
+                merged.name = f"{prefix}_{i}"
+            normalized_blocks.append(merged)
+            continue
+        raise TypeError(f"Invalid analytic_fit_blocks entry at index {i}: {type(block)!r}")
+    return normalized_blocks
+
+
+def _normalize_config(cfg: ExperimentConfig, raw: dict[str, Any]) -> ExperimentConfig:
+    cfg.analytic_fit_blocks = _normalize_fit_blocks(cfg.analytic_fit_blocks, prefix="fit")
+    cfg.stages.fit_initializations.fit_blocks = _normalize_fit_blocks(
+        cfg.stages.fit_initializations.fit_blocks,
+        prefix="stage_fit",
+    )
+
+    if "stages" in raw:
+        # Stage-grouped config is canonical when present.
+        cfg.training = cfg.stages.prepretrain.training
+        cfg.sweep = cfg.stages.prepretrain.sweep
+        cfg.analysis = cfg.stages.fit_initializations.analysis
+        cfg.rebasin = cfg.stages.fit_initializations.rebasin
+        cfg.init_eval_data = cfg.stages.pretrain_eval.init_eval_data
+        cfg.analytic_fit_blocks = cfg.stages.fit_initializations.fit_blocks
+    else:
+        # Keep stage-grouped view in sync for legacy flat configs.
+        cfg.stages.prepretrain.training = cfg.training
+        cfg.stages.prepretrain.sweep = cfg.sweep
+        cfg.stages.fit_initializations.analysis = cfg.analysis
+        cfg.stages.fit_initializations.rebasin = cfg.rebasin
+        cfg.stages.pretrain_eval.init_eval_data = cfg.init_eval_data
+        cfg.stages.fit_initializations.fit_blocks = cfg.analytic_fit_blocks
+
+    return cfg
+
+
+def resolve_analytic_fit_blocks(cfg: ExperimentConfig) -> list[AnalyticFitBlockConfig]:
+    if cfg.analytic_fit_blocks:
+        return cfg.analytic_fit_blocks
+    # Backward compatibility with legacy single-block configs.
+    return [
+        AnalyticFitBlockConfig(
+            name=cfg.analytic_fit.basis_type,
+            basis_type=cfg.analytic_fit.basis_type,
+            poly_degree=cfg.analytic_fit.poly_degree,
+            exp_scales=list(cfg.analytic_fit.exp_scales),
+            chebyshev_degree=cfg.analytic_fit.chebyshev_degree,
+            fourier_degree=cfg.analytic_fit.fourier_degree,
+            rbf_num_centers=cfg.analytic_fit.rbf_num_centers,
+            rbf_sigma=cfg.analytic_fit.rbf_sigma,
+        )
+    ]
