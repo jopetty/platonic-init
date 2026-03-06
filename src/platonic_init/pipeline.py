@@ -14,6 +14,7 @@ from .config import load_config
 from .eval_init import run_variant
 from .data import build_tokenizer, load_init_eval_datasets
 from .env import load_project_env
+from .rebasin import align_states_for_pca
 from .paths import (
     analysis_artifacts_dir,
     basis_sweep_dir,
@@ -32,6 +33,26 @@ ALL_STAGES = [STAGE_PREPRETRAIN, STAGE_FIT_INITIALIZATIONS, STAGE_PRETRAIN]
 
 def _default_checkpoint_dirs(cfg) -> list[Path]:
     return [prepretraining_seed_dir(cfg, seed) for seed in cfg.sweep.seeds]
+
+
+def _infer_num_attention_heads(model_dir: Path) -> int | None:
+    config_path = model_dir / "config.json"
+    if not config_path.exists():
+        return None
+    try:
+        with config_path.open("r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        return None
+    for key in ("n_head", "num_attention_heads"):
+        if key in raw:
+            try:
+                value = int(raw[key])
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                return value
+    return None
 
 
 def _stage_plan(stages: list[str]) -> tuple[bool, bool, bool]:
@@ -125,6 +146,16 @@ def _fit_initializations_stage(
         raise FileNotFoundError(f"Missing checkpoints: {missing}")
 
     states = [_load_state_dict(p) for p in ckpts]
+    if cfg.rebasin.enabled:
+        num_attention_heads = _infer_num_attention_heads(ckpts[0])
+        states, rebasin_report = align_states_for_pca(
+            states,
+            max_iter=int(cfg.rebasin.max_iter),
+            seed=int(cfg.rebasin.seed),
+            num_attention_heads=num_attention_heads,
+        )
+        with (analysis_artifacts / "rebasin_report.json").open("w", encoding="utf-8") as f:
+            json.dump(rebasin_report, f, indent=2)
     subspace = tensorwise_pca(states, cfg.analysis)
 
     subspace_path = analysis_artifacts / "weight_subspace.pt"

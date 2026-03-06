@@ -7,4 +7,5 @@ __all__ = [
     "analyze",
     "analytic",
     "init_fn",
+    "rebasin",
 ]

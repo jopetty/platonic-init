@@ -56,6 +56,13 @@ class AnalyticFitConfig:
 
 
 @dataclass
+class RebasinConfig:
+    enabled: bool = True
+    max_iter: int = 50
+    seed: int = 0
+
+
+@dataclass
 class InitEvalDataConfig:
     source: str = "hf"  # one of: "hf", "local_text"
     dataset_name: str = "wikitext"
@@ -75,6 +82,7 @@ class ExperimentConfig:
     sweep: SweepConfig = field(default_factory=SweepConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     analytic_fit: AnalyticFitConfig = field(default_factory=AnalyticFitConfig)
+    rebasin: RebasinConfig = field(default_factory=RebasinConfig)
     init_eval_data: InitEvalDataConfig = field(default_factory=InitEvalDataConfig)
 
 
