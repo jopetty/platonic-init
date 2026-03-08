@@ -46,7 +46,7 @@ stages:
       - name: chebyshev_d6
         basis_type: chebyshev
         chebyshev_degree: 6
-      - name: chebyshev
+      - name: chebyshev_d12
         basis_type: chebyshev
         chebyshev_degree: 12
       - name: chebyshev_d24

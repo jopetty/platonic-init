@@ -124,14 +124,31 @@ class StagesConfig:
 @dataclass
 class ExperimentConfig:
     data_path: str = "data/synthetic.txt"
-    training: TrainingConfig = field(default_factory=TrainingConfig)
-    sweep: SweepConfig = field(default_factory=SweepConfig)
-    analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
-    analytic_fit: AnalyticFitConfig = field(default_factory=AnalyticFitConfig)
-    analytic_fit_blocks: list[AnalyticFitBlockConfig] = field(default_factory=list)
-    rebasin: RebasinConfig = field(default_factory=RebasinConfig)
-    init_eval_data: InitEvalDataConfig = field(default_factory=InitEvalDataConfig)
     stages: StagesConfig = field(default_factory=StagesConfig)
+
+    @property
+    def training(self) -> TrainingConfig:
+        return self.stages.prepretrain.training
+
+    @property
+    def sweep(self) -> SweepConfig:
+        return self.stages.prepretrain.sweep
+
+    @property
+    def analysis(self) -> AnalysisConfig:
+        return self.stages.fit_initializations.analysis
+
+    @property
+    def rebasin(self) -> RebasinConfig:
+        return self.stages.fit_initializations.rebasin
+
+    @property
+    def init_eval_data(self) -> InitEvalDataConfig:
+        return self.stages.pretrain_eval.init_eval_data
+
+    @property
+    def fit_blocks(self) -> list[AnalyticFitBlockConfig]:
+        return self.stages.fit_initializations.fit_blocks
 
 
 def _merge_dataclass(dc_obj: Any, values: dict[str, Any]) -> Any:
@@ -146,13 +163,14 @@ def _merge_dataclass(dc_obj: Any, values: dict[str, Any]) -> Any:
 
 def load_config(path: str | Path) -> ExperimentConfig:
     path = Path(path)
-    cfg = ExperimentConfig()
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
     with path.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
-    cfg = _merge_dataclass(cfg, raw)
-    return _normalize_config(cfg, raw)
+    if "stages" not in raw:
+        raise ValueError(f"Config must define a top-level 'stages' mapping: {path}")
+    cfg = _merge_dataclass(ExperimentConfig(), raw)
+    return _normalize_config(cfg)
 
 
 def save_config(config: ExperimentConfig, path: str | Path) -> None:
@@ -174,50 +192,10 @@ def _normalize_fit_blocks(items: list[Any], *, prefix: str = "fit") -> list[Anal
                 merged.name = f"{prefix}_{i}"
             normalized_blocks.append(merged)
             continue
-        raise TypeError(f"Invalid analytic_fit_blocks entry at index {i}: {type(block)!r}")
+        raise TypeError(f"Invalid fit_blocks entry at index {i}: {type(block)!r}")
     return normalized_blocks
 
 
-def _normalize_config(cfg: ExperimentConfig, raw: dict[str, Any]) -> ExperimentConfig:
-    cfg.analytic_fit_blocks = _normalize_fit_blocks(cfg.analytic_fit_blocks, prefix="fit")
-    cfg.stages.fit_initializations.fit_blocks = _normalize_fit_blocks(
-        cfg.stages.fit_initializations.fit_blocks,
-        prefix="stage_fit",
-    )
-
-    if "stages" in raw:
-        # Stage-grouped config is canonical when present.
-        cfg.training = cfg.stages.prepretrain.training
-        cfg.sweep = cfg.stages.prepretrain.sweep
-        cfg.analysis = cfg.stages.fit_initializations.analysis
-        cfg.rebasin = cfg.stages.fit_initializations.rebasin
-        cfg.init_eval_data = cfg.stages.pretrain_eval.init_eval_data
-        cfg.analytic_fit_blocks = cfg.stages.fit_initializations.fit_blocks
-    else:
-        # Keep stage-grouped view in sync for legacy flat configs.
-        cfg.stages.prepretrain.training = cfg.training
-        cfg.stages.prepretrain.sweep = cfg.sweep
-        cfg.stages.fit_initializations.analysis = cfg.analysis
-        cfg.stages.fit_initializations.rebasin = cfg.rebasin
-        cfg.stages.pretrain_eval.init_eval_data = cfg.init_eval_data
-        cfg.stages.fit_initializations.fit_blocks = cfg.analytic_fit_blocks
-
+def _normalize_config(cfg: ExperimentConfig) -> ExperimentConfig:
+    cfg.stages.fit_initializations.fit_blocks = _normalize_fit_blocks(cfg.stages.fit_initializations.fit_blocks)
     return cfg
-
-
-def resolve_analytic_fit_blocks(cfg: ExperimentConfig) -> list[AnalyticFitBlockConfig]:
-    if cfg.analytic_fit_blocks:
-        return cfg.analytic_fit_blocks
-    # Backward compatibility with legacy single-block configs.
-    return [
-        AnalyticFitBlockConfig(
-            name=cfg.analytic_fit.basis_type,
-            basis_type=cfg.analytic_fit.basis_type,
-            poly_degree=cfg.analytic_fit.poly_degree,
-            exp_scales=list(cfg.analytic_fit.exp_scales),
-            chebyshev_degree=cfg.analytic_fit.chebyshev_degree,
-            fourier_degree=cfg.analytic_fit.fourier_degree,
-            rbf_num_centers=cfg.analytic_fit.rbf_num_centers,
-            rbf_sigma=cfg.analytic_fit.rbf_sigma,
-        )
-    ]

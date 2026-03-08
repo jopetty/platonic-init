@@ -49,8 +49,8 @@ Outputs:
 - Track relative reconstruction error per tensor/component.
 
 Outputs:
-- `artifacts/analytic_subspace.pt`
-- `artifacts/analytic_fit_report.json`
+- `artifacts/experiments/<experiment>/analysis/basis_sweep/analytic_subspace_<fit>.pt`
+- `artifacts/experiments/<experiment>/analysis/basis_sweep/analytic_fit_report_<fit>.json`
 
 ### 4) Initialization Evaluation
 - Compare variants with equal training budget:
@@ -61,7 +61,7 @@ Outputs:
   configured under `init_eval_data` (defaults to WikiText-2 in this repo).
 
 Output:
-- `artifacts/init_eval.json`
+- `artifacts/experiments/<experiment>/pretraining/init_eval.json`
 
 ### 5) Model Size and Shape Accounting
 Because tensor alignment requires matching shapes, run experiments in **shape-homogeneous cohorts**:
@@ -80,8 +80,10 @@ For each cohort, run stages 1-4 independently, then compare:
 - `src/platonic_init/analyze.py`: tensorwise shared-subspace extraction
 - `src/platonic_init/analytic.py`: analytic basis fitting for PCA components
 - `src/platonic_init/init_fn.py`: closed-form initializer construction/application
-- `src/platonic_init/eval_init.py`: per-variant downstream initialization evaluation
-- `src/platonic_init/pipeline.py`: end-to-end orchestration
+- `src/platonic_init/eval_init.py`: reusable downstream initialization evaluation primitive
+- `src/platonic_init/pipeline.py`: single CLI entrypoint for end-to-end orchestration
+- `src/platonic_init/pipeline_stages.py`: stage implementations and job selection logic
+- `src/platonic_init/runtime.py`: shared model/trainer runtime helpers
 - `configs/experiment.yaml`: main experiment config
 - `scripts/*.sh`: convenience wrappers
 
@@ -99,7 +101,7 @@ uv run python -m ipykernel install --user --name platonic-init --display-name "P
 uv run jupyter lab
 ```
 
-Weights & Biases logging is configured via `training.report_to` in config files.
+Weights & Biases logging is configured via `stages.prepretrain.training.report_to` in config files.
 Before runs with W&B enabled, authenticate once:
 ```bash
 uv run wandb login
@@ -153,6 +155,14 @@ Validate stage prerequisites without running:
 uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stages pretrain --doctor
 ```
 
+Configs are stage-scoped only. The canonical shape is:
+```yaml
+stages:
+  prepretrain: ...
+  fit_initializations: ...
+  pretrain_eval: ...
+```
+
 ## Notes / Current Constraints
 
 - Current subspace extraction assumes identical tensor names/shapes across checkpoints.
@@ -163,7 +173,7 @@ uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stage
   2. `fourier` (good for low-frequency / periodic-ish structure)
   3. `rbf` (good for localized structure)
   4. `poly_exp` (legacy baseline from earlier experiments)
-- `analytic_fit.basis_type` currently supports:
+- `fit_blocks[*].basis_type` currently supports:
   - `chebyshev`: orthogonal polynomial basis on normalized index coordinates.
   - `fourier`: truncated sin/cos basis for smooth periodic-ish structure.
   - `rbf`: Gaussian radial basis functions for localized structure.

@@ -1,67 +1,24 @@
 from __future__ import annotations
 
-import argparse
-import importlib.util
-import json
-import os
-import platform
 from pathlib import Path
 from typing import Any
 
 from datasets import Dataset
 import torch
 from tqdm import tqdm
-from transformers import AutoConfig, AutoModelForCausalLM, TrainerCallback, set_seed
+from transformers import TrainerCallback, set_seed
 from trl import SFTConfig, SFTTrainer
 
-from .config import load_config
-from .data import build_tokenizer, load_init_eval_datasets, load_saved_tokenizer
-from .env import load_project_env
+from .data import load_saved_tokenizer
 from .init_fn import apply_platonic_init, sample_latent
-from .paths import pretraining_init_eval_root, prepretraining_seed_dir
-
-
-def _resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
-    if not prefer_flash_attention_2:
-        return None
-    if platform.system() == "Darwin":
-        return None
-    if not torch.cuda.is_available():
-        return None
-    if importlib.util.find_spec("flash_attn") is None:
-        return None
-    return "flash_attention_2"
-
-
-def _build_model(
-    model_name_or_path: str,
-    *,
-    bf16: bool = False,
-    prefer_flash_attention_2: bool = True,
-):
-    cfg = AutoConfig.from_pretrained(model_name_or_path)
-    model_kwargs = {}
-    if bf16:
-        model_kwargs["torch_dtype"] = torch.bfloat16
-    attn_impl = _resolve_attn_implementation(prefer_flash_attention_2)
-    if attn_impl is not None:
-        model_kwargs["attn_implementation"] = attn_impl
-    return AutoModelForCausalLM.from_config(cfg, **model_kwargs)
-
-
-def _load_pretrained_model(
-    model_name_or_path: str,
-    *,
-    bf16: bool = False,
-    prefer_flash_attention_2: bool = True,
-):
-    model_kwargs = {}
-    if bf16:
-        model_kwargs["torch_dtype"] = torch.bfloat16
-    attn_impl = _resolve_attn_implementation(prefer_flash_attention_2)
-    if attn_impl is not None:
-        model_kwargs["attn_implementation"] = attn_impl
-    return AutoModelForCausalLM.from_pretrained(model_name_or_path, **model_kwargs)
+from .runtime import (
+    build_model_from_config,
+    configure_wandb_env,
+    finish_wandb_run,
+    load_pretrained_model,
+    resolve_max_length,
+    scheduler_kwargs,
+)
 
 
 def _copy_matching_weights(source: torch.nn.Module, target: torch.nn.Module) -> None:
@@ -122,7 +79,7 @@ def _apply_prepretrain_projection(
 ) -> int:
     if embedding_transfer_model_path is None:
         return 0
-    source_model = _load_pretrained_model(
+    source_model = load_pretrained_model(
         embedding_transfer_model_path,
         bf16=bf16,
         prefer_flash_attention_2=prefer_flash_attention_2,
@@ -132,13 +89,6 @@ def _apply_prepretrain_projection(
         _copy_matching_weights(source_model, target_model)
     copied = _project_shared_token_embeddings(source_model, source_tokenizer, target_model, target_tokenizer)
     return copied
-
-
-def _configure_wandb_env(wandb_project: str | None, wandb_entity: str | None) -> None:
-    if wandb_project:
-        os.environ["WANDB_PROJECT"] = wandb_project
-    if wandb_entity:
-        os.environ["WANDB_ENTITY"] = wandb_entity
 
 
 class _TrainStepTqdmCallback(TrainerCallback):
@@ -224,21 +174,20 @@ def run_variant(
     prefer_flash_attention_2: bool = True,
 ) -> dict[str, Any]:
     set_seed(seed)
-    if report_to and "wandb" in report_to:
-        _configure_wandb_env(wandb_project=wandb_project, wandb_entity=wandb_entity)
-        if run_name:
-            os.environ["WANDB_NAME"] = run_name
-            os.environ["WANDB_RUN_GROUP"] = f"{run_name.rsplit('-', 1)[0]}-inits"
-    model = _build_model(
+    configure_wandb_env(
+        report_to=report_to,
+        wandb_project=wandb_project,
+        wandb_entity=wandb_entity,
+        run_name=run_name,
+        run_group=f"{run_name.rsplit('-', 1)[0]}-inits" if run_name else None,
+    )
+    model = build_model_from_config(
         model_name_or_path,
         bf16=bf16,
         prefer_flash_attention_2=prefer_flash_attention_2,
     )
     model.resize_token_embeddings(len(tokenizer))
-    max_length = int(block_size)
-    model_ctx = getattr(model.config, "max_position_embeddings", None)
-    if model_ctx is not None:
-        max_length = min(max_length, int(model_ctx))
+    max_length = resolve_max_length(model, block_size)
 
     copied_embedding_rows = 0
     if variant == "weight_transfer":
@@ -281,15 +230,6 @@ def run_variant(
             prefer_flash_attention_2=prefer_flash_attention_2,
         )
 
-    scheduler_kwargs: dict[str, Any] = {
-        "lr_scheduler_type": "cosine_with_min_lr",
-        "lr_scheduler_kwargs": {"min_lr_rate": float(min_lr_rate)},
-    }
-    if warmup_steps is not None:
-        scheduler_kwargs["warmup_steps"] = int(warmup_steps)
-    else:
-        scheduler_kwargs["warmup_ratio"] = float(warmup_ratio)
-
     args = SFTConfig(
         output_dir=str(out_dir),
         dataset_text_field="text",
@@ -310,7 +250,11 @@ def run_variant(
         disable_tqdm=True,
         log_level="error",
         log_level_replica="error",
-        **scheduler_kwargs,
+        **scheduler_kwargs(
+            warmup_steps=warmup_steps,
+            warmup_ratio=warmup_ratio,
+            min_lr_rate=min_lr_rate,
+        ),
     )
     callbacks = []
     if step_progress_desc is not None:
@@ -365,98 +309,5 @@ def run_variant(
         "eval_curve": deduped_curve,
         "copied_embedding_rows": int(copied_embedding_rows),
     }
-    if report_to and "wandb" in report_to:
-        import wandb
-
-        wandb.finish()
+    finish_wandb_run(report_to)
     return out
-
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Compare initialization strategies by downstream fine-tuning validation loss"
-    )
-    p.add_argument("--config", type=str, default="configs/experiment.yaml")
-    p.add_argument("--analytic-subspace", type=str, default="artifacts/analytic_subspace.pt")
-    p.add_argument("--out", type=str, default="artifacts/init_eval.json")
-    p.add_argument("--train-steps", type=int, default=200)
-    p.add_argument("--eval-ratio", type=float, default=0.1)
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--latent-seed", type=int, default=123)
-    p.add_argument("--latent-scale", type=float, default=1.0)
-    p.add_argument("--transfer-model-path", type=str, default=None)
-    p.add_argument("--include-transfer", action="store_true")
-    p.add_argument(
-        "--eval-every",
-        type=int,
-        default=None,
-        help="Evaluate every N training steps during downstream fine-tuning",
-    )
-    return p.parse_args()
-
-
-def main() -> None:
-    load_project_env()
-    args = parse_args()
-    cfg = load_config(args.config)
-
-    train_ds, eval_ds = load_init_eval_datasets(
-        cfg=cfg.init_eval_data,
-        default_local_path=cfg.data_path,
-        eval_ratio=args.eval_ratio,
-        seed=args.seed,
-    )
-    tokenizer = build_tokenizer(cfg.training.model_name_or_path)
-
-    analytic_subspace = None
-    if Path(args.analytic_subspace).exists():
-        import torch
-
-        analytic_subspace = torch.load(args.analytic_subspace, map_location="cpu")
-
-    out_dir = pretraining_init_eval_root(cfg)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    variants = ["random"]
-    if analytic_subspace is not None:
-        variants += ["platonic_mean", "platonic_sampled"]
-    if args.include_transfer:
-        variants.append("weight_transfer")
-
-    results = []
-    default_transfer_ckpt = prepretraining_seed_dir(cfg, seed=cfg.sweep.seeds[0] if cfg.sweep.seeds else 0)
-    embedding_transfer_model_path = str(default_transfer_ckpt) if default_transfer_ckpt.exists() else None
-    for variant in variants:
-        result = run_variant(
-            variant=variant,
-            model_name_or_path=cfg.training.model_name_or_path,
-            tokenizer=tokenizer,
-            train_ds=train_ds,
-            eval_ds=eval_ds,
-            out_dir=out_dir / variant,
-            train_steps=args.train_steps,
-            batch_size=cfg.training.per_device_train_batch_size,
-            learning_rate=cfg.training.learning_rate,
-            block_size=cfg.training.block_size,
-            seed=args.seed,
-            analytic_subspace=analytic_subspace,
-            latent_seed=args.latent_seed,
-            latent_scale=args.latent_scale,
-            report_to=cfg.training.report_to,
-            run_name=f"{cfg.sweep.experiment_name}-init-eval-{variant}",
-            wandb_project=cfg.training.wandb_project,
-            wandb_entity=cfg.training.wandb_entity,
-            eval_every=args.eval_every,
-            transfer_model_path=args.transfer_model_path,
-            embedding_transfer_model_path=embedding_transfer_model_path,
-        )
-        results.append(result)
-
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8") as f:
-        json.dump({"results": results}, f, indent=2)
-
-
-if __name__ == "__main__":
-    main()

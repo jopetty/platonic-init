@@ -33,16 +33,9 @@ def prepretraining_root(cfg: ExperimentConfig) -> Path:
 def prepretraining_seed_dir(cfg: ExperimentConfig, seed: int) -> Path:
     return prepretraining_root(cfg) / f"seed_{seed}"
 
-
-def pretraining_init_eval_root(cfg: ExperimentConfig) -> Path:
-    return Path("runs") / "pretraining" / cfg.sweep.experiment_name / "init_eval"
-
-
 def pretraining_init_eval_basis_root(cfg: ExperimentConfig) -> Path:
     return Path("runs") / "pretraining" / cfg.sweep.experiment_name / "init_eval_basis"
 
 
-def basis_sweep_dir(cfg: ExperimentConfig, override: str | None = None) -> Path:
-    if override is not None:
-        return Path(override)
+def basis_sweep_dir(cfg: ExperimentConfig) -> Path:
     return analysis_artifacts_dir(cfg) / "basis_sweep"

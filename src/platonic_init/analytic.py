@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -9,8 +10,9 @@ import numpy as np
 import torch
 
 from .basis import build_basis_numpy
-from .config import AnalyticFitConfig, load_config
+from .config import AnalyticFitBlockConfig, AnalyticFitConfig, ExperimentConfig, load_config
 from .env import load_project_env
+from .paths import basis_sweep_dir
 
 
 def _basis_params(cfg: AnalyticFitConfig) -> dict[str, Any]:
@@ -74,12 +76,36 @@ def fit_analytic_subspace(
     return out, report
 
 
+def _fit_block_slug(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip()).strip("_").lower()
+    if not slug:
+        raise ValueError(f"Invalid analytic fit block name: {name!r}")
+    return slug
+
+
+def _resolve_fit_block(cfg: ExperimentConfig, fit_name: str | None) -> AnalyticFitBlockConfig:
+    blocks = list(cfg.fit_blocks)
+    if not blocks:
+        raise ValueError("Config must define at least one fit block under stages.fit_initializations.fit_blocks")
+    if fit_name is None:
+        if len(blocks) != 1:
+            names = [block.name for block in blocks]
+            raise ValueError(f"Multiple fit blocks configured; pass --fit-name explicitly. Available: {names}")
+        return blocks[0]
+    for block in blocks:
+        if block.name == fit_name:
+            return block
+    names = [block.name for block in blocks]
+    raise ValueError(f"Unknown fit block {fit_name!r}. Available: {names}")
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Fit analytic basis to principal components")
     p.add_argument("--config", type=str, default="configs/experiment.yaml")
-    p.add_argument("--subspace", type=str, default="artifacts/weight_subspace.pt")
-    p.add_argument("--out", type=str, default="artifacts/analytic_subspace.pt")
-    p.add_argument("--report-out", type=str, default="artifacts/analytic_fit_report.json")
+    p.add_argument("--subspace", type=str, default=None)
+    p.add_argument("--fit-name", type=str, default=None)
+    p.add_argument("--out", type=str, default=None)
+    p.add_argument("--report-out", type=str, default=None)
     return p.parse_args()
 
 
@@ -87,14 +113,20 @@ def main() -> None:
     load_project_env()
     args = parse_args()
     exp_cfg = load_config(args.config)
-    subspace = torch.load(args.subspace, map_location="cpu")
-    analytic, report = fit_analytic_subspace(subspace, exp_cfg.analytic_fit)
+    fit_block = _resolve_fit_block(exp_cfg, args.fit_name)
+    fit_slug = _fit_block_slug(fit_block.name)
+    sweep_dir = basis_sweep_dir(exp_cfg)
+    subspace_path = Path(args.subspace) if args.subspace is not None else sweep_dir.parent / "weight_subspace.pt"
+    subspace = torch.load(subspace_path, map_location="cpu")
+    analytic, report = fit_analytic_subspace(subspace, fit_block.to_fit_config())
 
-    out_path = Path(args.out)
+    out_path = Path(args.out) if args.out is not None else sweep_dir / f"analytic_subspace_{fit_slug}.pt"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(analytic, out_path)
 
-    report_path = Path(args.report_out)
+    report_path = (
+        Path(args.report_out) if args.report_out is not None else sweep_dir / f"analytic_fit_report_{fit_slug}.json"
+    )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     with report_path.open("w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
