@@ -21,6 +21,10 @@ def pretraining_artifacts_dir(cfg: ExperimentConfig) -> Path:
     return experiment_artifacts_dir(cfg) / "pretraining"
 
 
+def dataset_cache_root(cfg: ExperimentConfig) -> Path:
+    return experiment_artifacts_dir(cfg) / "cache" / "datasets"
+
+
 def prepretraining_root(cfg: ExperimentConfig) -> Path:
     return (
         Path(cfg.sweep.output_root)
@@ -32,6 +36,7 @@ def prepretraining_root(cfg: ExperimentConfig) -> Path:
 
 def prepretraining_seed_dir(cfg: ExperimentConfig, seed: int) -> Path:
     return prepretraining_root(cfg) / f"seed_{seed}"
+
 
 def pretraining_init_eval_basis_root(cfg: ExperimentConfig) -> Path:
     return Path("runs") / "pretraining" / cfg.sweep.experiment_name / "init_eval_basis"

@@ -7,9 +7,16 @@ from transformers import set_seed
 from trl import SFTConfig, SFTTrainer
 
 from .config import ExperimentConfig, load_config
-from .data import build_char_tokenizer_from_text, build_tokenizer, load_text_dataset
+from .data import (
+    build_char_tokenizer_from_text,
+    build_tokenizer,
+    dataset_cache_key,
+    load_or_create_tokenized_dataset,
+    load_text_dataset,
+    tokenizer_cache_key,
+)
 from .env import load_project_env
-from .paths import prepretraining_root, prepretraining_seed_dir
+from .paths import dataset_cache_root, prepretraining_root, prepretraining_seed_dir
 from .runtime import (
     build_model_from_config,
     configure_wandb_env,
@@ -37,7 +44,19 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         tokenizer = build_char_tokenizer_from_text(config.data_path)
     else:
         tokenizer = build_tokenizer(config.training.model_name_or_path)
-    dataset = load_text_dataset(config.data_path)
+    dataset = load_or_create_tokenized_dataset(
+        load_text_dataset(config.data_path),
+        tokenizer,
+        block_size=config.training.block_size,
+        cache_dir=dataset_cache_root(config),
+        cache_key=dataset_cache_key(
+            "prepretrain",
+            config.data_path,
+            config.training.block_size,
+            config.training.prepretrain_char_tokenizer,
+            tokenizer_cache_key(tokenizer),
+        ),
+    )
     model = build_model_from_config(
         config.training.model_name_or_path,
         bf16=config.training.bf16,

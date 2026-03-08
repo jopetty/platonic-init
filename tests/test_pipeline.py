@@ -5,7 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from datasets import Dataset
+
 from platonic_init.config import AnalyticFitBlockConfig, ExperimentConfig, load_config
+from platonic_init.data import CharTokenizer, dataset_cache_key, load_or_create_tokenized_dataset, tokenizer_cache_key
 from platonic_init.pipeline import _doctor_checks, _merge_results_by_label, _stage_plan
 from platonic_init.paths import basis_sweep_dir, prepretraining_seed_dir
 from platonic_init.pipeline_stages import build_pretrain_jobs
@@ -101,6 +104,18 @@ class ConfigTests(unittest.TestCase):
             path.write_text("data_path: data/synthetic.txt\ntraining:\n  model_name_or_path: gpt2\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "top-level 'stages'"):
                 load_config(path)
+
+
+class DatasetCacheTests(unittest.TestCase):
+    def test_tokenized_dataset_cache_round_trip(self) -> None:
+        tokenizer = CharTokenizer(vocab={"<pad>": 0, "<unk>": 1, "<bos>": 2, "<eos>": 3, "a": 4, "b": 5})
+        ds = Dataset.from_dict({"text": ["ab", "ba", "ab"]})
+        with tempfile.TemporaryDirectory() as tmp:
+            key = dataset_cache_key("round-trip", tokenizer_cache_key(tokenizer), 4)
+            first = load_or_create_tokenized_dataset(ds, tokenizer, block_size=4, cache_dir=tmp, cache_key=key)
+            second = load_or_create_tokenized_dataset(ds, tokenizer, block_size=4, cache_dir=tmp, cache_key=key)
+            self.assertEqual(len(first), len(second))
+            self.assertTrue((Path(tmp) / key).exists())
 
 
 class PretrainJobTests(unittest.TestCase):

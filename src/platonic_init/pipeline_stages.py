@@ -12,9 +12,15 @@ from tqdm import tqdm
 from .analytic import fit_analytic_subspace
 from .analyze import _load_state_dict, build_summary, tensorwise_pca
 from .config import AnalyticFitBlockConfig, ExperimentConfig
-from .data import build_tokenizer, load_init_eval_datasets
-from .eval_init import run_variant
-from .paths import basis_sweep_dir, pretraining_init_eval_basis_root, prepretraining_seed_dir
+from .data import (
+    build_tokenizer,
+    dataset_cache_key,
+    load_init_eval_datasets,
+    load_or_create_tokenized_dataset,
+    tokenizer_cache_key,
+)
+from .eval_init import load_transfer_projection_assets, run_variant
+from .paths import basis_sweep_dir, dataset_cache_root, pretraining_init_eval_basis_root, prepretraining_seed_dir
 from .rebasin import align_states_for_pca
 
 STAGE_PREPRETRAIN = "prepretrain"
@@ -298,9 +304,51 @@ def pretrain_stage(
         seed=args.seed,
     )
     tokenizer = build_tokenizer(cfg.training.model_name_or_path)
+    cache_root = dataset_cache_root(cfg)
+    tokenized_train_ds = load_or_create_tokenized_dataset(
+        train_ds,
+        tokenizer,
+        block_size=cfg.training.block_size,
+        cache_dir=cache_root,
+        cache_key=dataset_cache_key(
+            "init-eval-train",
+            cfg.init_eval_data.source,
+            cfg.init_eval_data.dataset_name,
+            cfg.init_eval_data.dataset_config_name,
+            cfg.init_eval_data.train_split,
+            cfg.init_eval_data.text_field,
+            cfg.init_eval_data.local_data_path or cfg.data_path,
+            cfg.init_eval_data.max_train_samples,
+            args.eval_ratio,
+            args.seed,
+            cfg.training.block_size,
+            tokenizer_cache_key(tokenizer),
+        ),
+    )
+    tokenized_eval_ds = load_or_create_tokenized_dataset(
+        eval_ds,
+        tokenizer,
+        block_size=cfg.training.block_size,
+        cache_dir=cache_root,
+        cache_key=dataset_cache_key(
+            "init-eval-eval",
+            cfg.init_eval_data.source,
+            cfg.init_eval_data.dataset_name,
+            cfg.init_eval_data.dataset_config_name,
+            cfg.init_eval_data.eval_split,
+            cfg.init_eval_data.text_field,
+            cfg.init_eval_data.local_data_path or cfg.data_path,
+            cfg.init_eval_data.max_eval_samples,
+            args.eval_ratio,
+            args.seed,
+            cfg.training.block_size,
+            tokenizer_cache_key(tokenizer),
+        ),
+    )
 
     transfer_model_path = None
     transfer_state_dict = None
+    transfer_projection_assets = None
     if not args.skip_transfer:
         transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
         if not transfer_seed_path.exists():
@@ -313,6 +361,11 @@ def pretrain_stage(
                 "Run fit_initializations stage first or include 'fit_initializations' in --stages."
             )
         transfer_state_dict = torch.load(merged_state_path, map_location="cpu")
+        transfer_projection_assets = load_transfer_projection_assets(
+            transfer_model_path,
+            bf16=cfg.training.bf16,
+            prefer_flash_attention_2=cfg.training.prefer_flash_attention_2,
+        )
 
     jobs = build_pretrain_jobs(
         cfg,
@@ -338,8 +391,8 @@ def pretrain_stage(
             variant=job.variant,
             model_name_or_path=cfg.training.model_name_or_path,
             tokenizer=tokenizer,
-            train_ds=train_ds,
-            eval_ds=eval_ds,
+            train_ds=tokenized_train_ds,
+            eval_ds=tokenized_eval_ds,
             out_dir=eval_root / job.out_name,
             train_steps=args.eval_steps,
             batch_size=cfg.training.per_device_train_batch_size,
@@ -357,6 +410,7 @@ def pretrain_stage(
             transfer_model_path=job.transfer_model_path,
             transfer_state_dict=job.transfer_state_dict,
             embedding_transfer_model_path=transfer_model_path,
+            embedding_transfer_assets=transfer_projection_assets,
             step_progress_desc=f"steps | init={job.label}",
             step_progress_position=1,
             warmup_steps=cfg.training.warmup_steps,

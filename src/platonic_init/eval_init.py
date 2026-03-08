@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,35 @@ from .runtime import (
     resolve_max_length,
     scheduler_kwargs,
 )
+
+
+@dataclass(frozen=True)
+class TransferProjectionAssets:
+    source_vocab: dict[str, int]
+    input_embeddings: torch.Tensor
+    output_embeddings: torch.Tensor | None
+
+
+def load_transfer_projection_assets(
+    model_name_or_path: str,
+    *,
+    bf16: bool = False,
+    prefer_flash_attention_2: bool = True,
+) -> TransferProjectionAssets:
+    source_model = load_pretrained_model(
+        model_name_or_path,
+        bf16=bf16,
+        prefer_flash_attention_2=prefer_flash_attention_2,
+    )
+    source_tokenizer = load_saved_tokenizer(model_name_or_path)
+    output_embeddings = source_model.get_output_embeddings()
+    return TransferProjectionAssets(
+        source_vocab=source_tokenizer.get_vocab(),
+        input_embeddings=source_model.get_input_embeddings().weight.detach().to(device="cpu").clone(),
+        output_embeddings=(
+            output_embeddings.weight.detach().to(device="cpu").clone() if output_embeddings is not None else None
+        ),
+    )
 
 
 def _copy_matching_weights(source: torch.nn.Module, target: torch.nn.Module) -> None:
@@ -44,10 +74,14 @@ def _copy_matching_weights_from_state(source_state: dict[str, torch.Tensor], tar
     target.load_state_dict(filtered, strict=False)
 
 
-def _project_shared_token_embeddings(source_model, source_tokenizer, target_model, target_tokenizer) -> int:
-    source_vocab = source_tokenizer.get_vocab()
+def _project_shared_token_embeddings(
+    source_vocab: dict[str, int],
+    source_embed: torch.Tensor,
+    source_output_embed: torch.Tensor | None,
+    target_model,
+    target_tokenizer,
+) -> int:
     target_vocab = target_tokenizer.get_vocab()
-    source_embed = source_model.get_input_embeddings().weight.data
     target_embed = target_model.get_input_embeddings().weight.data
     if source_embed.shape[1] != target_embed.shape[1]:
         return 0
@@ -63,7 +97,7 @@ def _project_shared_token_embeddings(source_model, source_tokenizer, target_mode
         copied += 1
 
     out_embed = target_model.get_output_embeddings()
-    if out_embed is not None and out_embed.weight.shape == target_embed.shape:
+    if out_embed is not None and source_output_embed is not None and source_output_embed.shape == target_embed.shape:
         out_embed.weight.data.copy_(target_embed)
     return copied
 
@@ -73,22 +107,56 @@ def _apply_prepretrain_projection(
     target_tokenizer,
     embedding_transfer_model_path: str | None,
     *,
+    projection_assets: TransferProjectionAssets | None = None,
     copy_non_embedding_weights: bool = False,
     bf16: bool = False,
     prefer_flash_attention_2: bool = True,
 ) -> int:
-    if embedding_transfer_model_path is None:
+    if projection_assets is None and embedding_transfer_model_path is None:
         return 0
-    source_model = load_pretrained_model(
-        embedding_transfer_model_path,
-        bf16=bf16,
-        prefer_flash_attention_2=prefer_flash_attention_2,
-    )
-    source_tokenizer = load_saved_tokenizer(embedding_transfer_model_path)
+    source_model = None
+    if projection_assets is None:
+        if embedding_transfer_model_path is None:
+            return 0
+        if copy_non_embedding_weights:
+            source_model = load_pretrained_model(
+                embedding_transfer_model_path,
+                bf16=bf16,
+                prefer_flash_attention_2=prefer_flash_attention_2,
+            )
+            source_tokenizer = load_saved_tokenizer(embedding_transfer_model_path)
+            projection_assets = TransferProjectionAssets(
+                source_vocab=source_tokenizer.get_vocab(),
+                input_embeddings=source_model.get_input_embeddings().weight.detach().to(device="cpu").clone(),
+                output_embeddings=(
+                    source_model.get_output_embeddings().weight.detach().to(device="cpu").clone()
+                    if source_model.get_output_embeddings() is not None
+                    else None
+                ),
+            )
+        else:
+            projection_assets = load_transfer_projection_assets(
+                embedding_transfer_model_path,
+                bf16=bf16,
+                prefer_flash_attention_2=prefer_flash_attention_2,
+            )
     if copy_non_embedding_weights:
+        if source_model is None:
+            if embedding_transfer_model_path is None:
+                raise ValueError("copy_non_embedding_weights requires a loaded source model")
+            source_model = load_pretrained_model(
+                embedding_transfer_model_path,
+                bf16=bf16,
+                prefer_flash_attention_2=prefer_flash_attention_2,
+            )
         _copy_matching_weights(source_model, target_model)
-    copied = _project_shared_token_embeddings(source_model, source_tokenizer, target_model, target_tokenizer)
-    return copied
+    return _project_shared_token_embeddings(
+        projection_assets.source_vocab,
+        projection_assets.input_embeddings,
+        projection_assets.output_embeddings,
+        target_model,
+        target_tokenizer,
+    )
 
 
 class _TrainStepTqdmCallback(TrainerCallback):
@@ -164,6 +232,7 @@ def run_variant(
     transfer_model_path: str | None = None,
     transfer_state_dict: dict[str, torch.Tensor] | None = None,
     embedding_transfer_model_path: str | None = None,
+    embedding_transfer_assets: TransferProjectionAssets | None = None,
     step_progress_desc: str | None = None,
     step_progress_position: int = 1,
     warmup_steps: int | None = 500,
@@ -197,6 +266,7 @@ def run_variant(
                 target_model=model,
                 target_tokenizer=tokenizer,
                 embedding_transfer_model_path=embedding_transfer_model_path or transfer_model_path,
+                projection_assets=embedding_transfer_assets,
                 copy_non_embedding_weights=False,
                 bf16=bf16,
                 prefer_flash_attention_2=prefer_flash_attention_2,
@@ -208,6 +278,7 @@ def run_variant(
                 target_model=model,
                 target_tokenizer=tokenizer,
                 embedding_transfer_model_path=transfer_model_path,
+                projection_assets=embedding_transfer_assets,
                 copy_non_embedding_weights=True,
                 bf16=bf16,
                 prefer_flash_attention_2=prefer_flash_attention_2,
@@ -225,6 +296,7 @@ def run_variant(
             target_model=model,
             target_tokenizer=tokenizer,
             embedding_transfer_model_path=embedding_transfer_model_path,
+            projection_assets=embedding_transfer_assets,
             copy_non_embedding_weights=False,
             bf16=bf16,
             prefer_flash_attention_2=prefer_flash_attention_2,

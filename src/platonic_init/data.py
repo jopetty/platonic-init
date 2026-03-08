@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Iterable
 
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset, load_from_disk
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from .config import InitEvalDataConfig
@@ -116,6 +117,28 @@ def load_saved_tokenizer(path: str | Path):
     return build_tokenizer(str(p))
 
 
+def tokenizer_cache_key(tokenizer) -> str:
+    if isinstance(tokenizer, CharTokenizer):
+        payload = json.dumps(tokenizer.get_vocab(), sort_keys=True)
+    else:
+        payload = json.dumps(
+            {
+                "name_or_path": getattr(tokenizer, "name_or_path", type(tokenizer).__name__),
+                "vocab_size": len(tokenizer),
+                "bos": tokenizer.bos_token_id,
+                "eos": tokenizer.eos_token_id,
+                "pad": tokenizer.pad_token_id,
+            },
+            sort_keys=True,
+        )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def dataset_cache_key(*parts: object) -> str:
+    payload = json.dumps([str(part) for part in parts], sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def tokenize_for_clm(ds: Dataset, tokenizer, block_size: int) -> Dataset:
     def tokenize_batch(batch):
         return tokenizer(batch[TEXT_FIELD], truncation=False)
@@ -142,6 +165,23 @@ def tokenize_for_clm(ds: Dataset, tokenizer, block_size: int) -> Dataset:
     grouped = tokenized.map(group_texts, batched=True)
     grouped = grouped.filter(lambda example: len(example["input_ids"]) > 0)
     return grouped
+
+
+def load_or_create_tokenized_dataset(
+    ds: Dataset,
+    tokenizer,
+    *,
+    block_size: int,
+    cache_dir: str | Path,
+    cache_key: str,
+) -> Dataset:
+    cache_path = Path(cache_dir) / cache_key
+    if cache_path.exists():
+        return load_from_disk(str(cache_path))
+    tokenized = tokenize_for_clm(ds, tokenizer, block_size=block_size)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    tokenized.save_to_disk(str(cache_path))
+    return tokenized
 
 
 def _limit_dataset(ds: Dataset, max_samples: int | None, seed: int) -> Dataset:
