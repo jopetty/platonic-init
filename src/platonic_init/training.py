@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import platform
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,15 @@ def resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
     if not torch.cuda.is_available():
         return None
     if importlib.util.find_spec("flash_attn") is None:
+        return None
+    try:
+        import flash_attn_2_cuda  # noqa: F401
+    except Exception as exc:
+        warnings.warn(
+            f"Flash Attention 2 requested but unavailable in this runtime; falling back to default attention. "
+            f"Import failed with: {exc!r}",
+            stacklevel=2,
+        )
         return None
     return "flash_attention_2"
 
