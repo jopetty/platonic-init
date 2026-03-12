@@ -1,3 +1,5 @@
+"""Experiment configuration dataclasses and YAML loading helpers."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -152,6 +154,8 @@ class ExperimentConfig:
 
 
 def _merge_dataclass(dc_obj: Any, values: dict[str, Any]) -> Any:
+    """Recursively overlay plain dictionaries onto nested dataclass instances."""
+
     for k, v in values.items():
         current = getattr(dc_obj, k)
         if hasattr(current, "__dataclass_fields__") and isinstance(v, dict):
@@ -162,6 +166,8 @@ def _merge_dataclass(dc_obj: Any, values: dict[str, Any]) -> Any:
 
 
 def load_config(path: str | Path) -> ExperimentConfig:
+    """Load an experiment config from YAML and normalize stage-specific blocks."""
+
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
@@ -174,6 +180,8 @@ def load_config(path: str | Path) -> ExperimentConfig:
 
 
 def save_config(config: ExperimentConfig, path: str | Path) -> None:
+    """Serialize an experiment config back to YAML."""
+
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
@@ -181,6 +189,8 @@ def save_config(config: ExperimentConfig, path: str | Path) -> None:
 
 
 def _normalize_fit_blocks(items: list[Any], *, prefix: str = "fit") -> list[AnalyticFitBlockConfig]:
+    """Normalize fit-block entries into `AnalyticFitBlockConfig` objects."""
+
     normalized_blocks: list[AnalyticFitBlockConfig] = []
     for i, block in enumerate(items):
         if isinstance(block, AnalyticFitBlockConfig):
@@ -197,5 +207,7 @@ def _normalize_fit_blocks(items: list[Any], *, prefix: str = "fit") -> list[Anal
 
 
 def _normalize_config(cfg: ExperimentConfig) -> ExperimentConfig:
+    """Apply post-load config normalization rules."""
+
     cfg.stages.fit_initializations.fit_blocks = _normalize_fit_blocks(cfg.stages.fit_initializations.fit_blocks)
     return cfg

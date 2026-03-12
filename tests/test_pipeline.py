@@ -10,8 +10,8 @@ from datasets import Dataset
 from platonic_init.config import AnalyticFitBlockConfig, ExperimentConfig, load_config
 from platonic_init.data import CharTokenizer, dataset_cache_key, load_or_create_tokenized_dataset, tokenizer_cache_key
 from platonic_init.pipeline import _doctor_checks, _merge_results_by_label, _stage_plan
-from platonic_init.paths import basis_sweep_dir, prepretraining_seed_dir
-from platonic_init.pipeline_stages import build_pretrain_jobs
+from platonic_init.pipeline import build_pretrain_jobs
+from platonic_init.support import basis_sweep_dir, prepretraining_seed_dir
 
 
 class PipelineStageTests(unittest.TestCase):

@@ -1,3 +1,5 @@
+"""Dataset and tokenizer helpers used by both training workflows."""
+
 from __future__ import annotations
 
 import hashlib
@@ -21,6 +23,8 @@ _REFERENCE_PAD_TOKEN = "<|padding|>"
 
 
 def load_text_dataset(data_path: str) -> Dataset:
+    """Load a local plain-text corpus into a Hugging Face dataset."""
+
     path = Path(data_path)
     if not path.exists():
         raise FileNotFoundError(f"Synthetic data file not found: {path}")
@@ -31,6 +35,8 @@ def load_text_dataset(data_path: str) -> Dataset:
 
 
 def build_tokenizer(model_name_or_path: str):
+    """Load a pretrained tokenizer and ensure it has a pad token."""
+
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": _REFERENCE_PAD_TOKEN})
@@ -38,9 +44,13 @@ def build_tokenizer(model_name_or_path: str):
 
 
 class CharTokenizer(PreTrainedTokenizer):
+    """Minimal character-level tokenizer for synthetic text experiments."""
+
     model_input_names = ["input_ids", "attention_mask"]
 
     def __init__(self, vocab: dict[str, int], **kwargs):
+        """Create a tokenizer from an explicit character vocabulary."""
+
         self.vocab = dict(vocab)
         self.ids_to_tokens = {v: k for k, v in self.vocab.items()}
         super().__init__(
@@ -53,21 +63,33 @@ class CharTokenizer(PreTrainedTokenizer):
 
     @property
     def vocab_size(self) -> int:
+        """Return vocabulary size."""
+
         return len(self.vocab)
 
     def get_vocab(self) -> dict[str, int]:
+        """Return the tokenizer vocabulary."""
+
         return dict(self.vocab)
 
     def _tokenize(self, text: str) -> list[str]:
+        """Tokenize by splitting the input into characters."""
+
         return list(text)
 
     def _convert_token_to_id(self, token: str) -> int:
+        """Map a token to its integer id with unknown fallback."""
+
         return self.vocab.get(token, self.vocab[self.unk_token])
 
     def _convert_id_to_token(self, index: int) -> str:
+        """Map an integer id back to its token string."""
+
         return self.ids_to_tokens.get(index, self.unk_token)
 
     def build_inputs_with_special_tokens(self, token_ids_0: list[int], token_ids_1: list[int] | None = None):
+        """Wrap one or two token sequences with BOS/EOS markers."""
+
         if token_ids_1 is not None:
             return [self.bos_token_id] + token_ids_0 + [self.eos_token_id] + token_ids_1 + [self.eos_token_id]
         return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
@@ -75,11 +97,15 @@ class CharTokenizer(PreTrainedTokenizer):
     def create_token_type_ids_from_sequences(
         self, token_ids_0: list[int], token_ids_1: list[int] | None = None
     ) -> list[int]:
+        """Return all-zero token type ids for compatibility with HF APIs."""
+
         if token_ids_1 is not None:
             return [0] * (len(token_ids_0) + len(token_ids_1) + 3)
         return [0] * (len(token_ids_0) + 2)
 
     def save_vocabulary(self, save_directory: str, filename_prefix: str | None = None) -> tuple[str]:
+        """Persist the character vocabulary in the same layout HF expects."""
+
         path = Path(save_directory)
         path.mkdir(parents=True, exist_ok=True)
         name = "char_vocab.json" if filename_prefix is None else f"{filename_prefix}-char_vocab.json"
@@ -89,6 +115,8 @@ class CharTokenizer(PreTrainedTokenizer):
 
 
 def _iter_text_chars(text_path: str | Path) -> Iterable[str]:
+    """Yield all non-newline characters from a text file."""
+
     with Path(text_path).open("r", encoding="utf-8") as f:
         for line in f:
             for ch in line.rstrip("\n"):
@@ -96,6 +124,8 @@ def _iter_text_chars(text_path: str | Path) -> Iterable[str]:
 
 
 def build_char_tokenizer_from_text(text_path: str | Path) -> CharTokenizer:
+    """Build a character tokenizer directly from a corpus file."""
+
     vocab = {
         _PAD_TOKEN: 0,
         _UNK_TOKEN: 1,
@@ -109,6 +139,8 @@ def build_char_tokenizer_from_text(text_path: str | Path) -> CharTokenizer:
 
 
 def load_saved_tokenizer(path: str | Path):
+    """Load either a saved char tokenizer or a standard pretrained tokenizer."""
+
     p = Path(path)
     vocab_path = p / "char_vocab.json"
     if vocab_path.exists():
@@ -118,6 +150,8 @@ def load_saved_tokenizer(path: str | Path):
 
 
 def tokenizer_cache_key(tokenizer) -> str:
+    """Create a stable cache key for a tokenizer configuration."""
+
     if isinstance(tokenizer, CharTokenizer):
         payload = json.dumps(tokenizer.get_vocab(), sort_keys=True)
     else:
@@ -135,11 +169,15 @@ def tokenizer_cache_key(tokenizer) -> str:
 
 
 def dataset_cache_key(*parts: object) -> str:
+    """Create a stable cache key for tokenized dataset artifacts."""
+
     payload = json.dumps([str(part) for part in parts], sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def tokenize_for_clm(ds: Dataset, tokenizer, block_size: int) -> Dataset:
+    """Tokenize and group a dataset into fixed-size causal-LM blocks."""
+
     def tokenize_batch(batch):
         return tokenizer(batch[TEXT_FIELD], truncation=False)
 
@@ -175,6 +213,8 @@ def load_or_create_tokenized_dataset(
     cache_dir: str | Path,
     cache_key: str,
 ) -> Dataset:
+    """Reuse a cached tokenized dataset when possible, otherwise build it."""
+
     cache_path = Path(cache_dir) / cache_key
     if cache_path.exists():
         return load_from_disk(str(cache_path))
@@ -185,6 +225,8 @@ def load_or_create_tokenized_dataset(
 
 
 def _limit_dataset(ds: Dataset, max_samples: int | None, seed: int) -> Dataset:
+    """Optionally subsample a dataset for faster experiments."""
+
     if max_samples is None:
         return ds
     if len(ds) <= max_samples:
@@ -198,6 +240,8 @@ def load_init_eval_datasets(
     eval_ratio: float,
     seed: int,
 ) -> tuple[Dataset, Dataset]:
+    """Load train/eval datasets for downstream initialization evaluation."""
+
     if cfg.source == "local_text":
         data_path = cfg.local_data_path or default_local_path
         ds = load_text_dataset(data_path)

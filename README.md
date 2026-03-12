@@ -76,14 +76,13 @@ For each cohort, run stages 1-4 independently, then compare:
 
 ## Code Layout
 
-- `src/platonic_init/train.py`: multi-seed pre-pretraining with TRL `SFTTrainer`
-- `src/platonic_init/analyze.py`: tensorwise shared-subspace extraction
-- `src/platonic_init/analytic.py`: analytic basis fitting for PCA components
-- `src/platonic_init/init_fn.py`: closed-form initializer construction/application
-- `src/platonic_init/eval_init.py`: reusable downstream initialization evaluation primitive
-- `src/platonic_init/pipeline.py`: single CLI entrypoint for end-to-end orchestration
-- `src/platonic_init/pipeline_stages.py`: stage implementations and job selection logic
-- `src/platonic_init/runtime.py`: shared model/trainer runtime helpers
+- `src/platonic_init/pipeline.py`: single CLI entrypoint plus stage orchestration and job selection
+- `src/platonic_init/training.py`: pre-pretraining, downstream init-eval runs, and shared model/trainer runtime helpers
+- `src/platonic_init/initialization.py`: checkpoint loading, tensorwise PCA, analytic basis fitting, and platonic init reconstruction
+- `src/platonic_init/data.py`: dataset and tokenizer helpers
+- `src/platonic_init/config.py`: experiment config dataclasses and YAML loading
+- `src/platonic_init/rebasin.py`: permutation alignment logic for cross-seed checkpoint analysis
+- `src/platonic_init/support.py`: environment loading and artifact-path helpers
 - `configs/experiment.yaml`: main experiment config
 - `scripts/*.sh`: convenience wrappers
 
