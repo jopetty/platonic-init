@@ -3,6 +3,7 @@
 __all__ = [
     "config",
     "data",
+    "formal_language",
     "initialization",
     "rebasin",
     "support",

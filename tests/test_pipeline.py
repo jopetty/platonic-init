@@ -81,6 +81,16 @@ class PipelineDoctorTests(unittest.TestCase):
         self.assertTrue(any("Missing analytic subspace" in issue for issue in issues))
         self.assertFalse(any("Missing transfer checkpoint" in issue for issue in issues))
 
+    def test_doctor_allows_transfer_only_without_fit_artifacts(self) -> None:
+        cfg = self._config()
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg.sweep.output_root = tmp
+            cfg.sweep.experiment_name = "exp_transfer_only"
+            prepretraining_seed_dir(cfg, 0).mkdir(parents=True, exist_ok=True)
+            args = self._args(skip_fits=True)
+            issues = _doctor_checks(cfg, args, run_fit_initializations=False, run_pretrain=True)
+        self.assertEqual(issues, [])
+
     def test_doctor_ok_for_pretrain_only_when_inputs_exist(self) -> None:
         cfg = self._config()
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,7 +157,7 @@ class PretrainJobTests(unittest.TestCase):
             self._args(fit_names=["fourier"]),
             basis_subspaces={"fourier": {"tensor": {}}},
             transfer_model_path="runs/prepretraining/job_exp/seed_0",
-            transfer_state_dict={"w": None},
+            transfer_state_dict=None,
         )
         self.assertEqual([job.label for job in jobs], ["random", "fourier", "weight_transfer"])
 

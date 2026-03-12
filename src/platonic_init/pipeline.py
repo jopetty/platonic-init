@@ -334,8 +334,8 @@ def build_pretrain_jobs(
             )
 
     if not args.skip_transfer:
-        if transfer_model_path is None or transfer_state_dict is None:
-            raise ValueError("Transfer artifacts are required when transfer evaluation is enabled")
+        if transfer_model_path is None:
+            raise ValueError("A transfer checkpoint path is required when transfer evaluation is enabled")
         jobs.append(
             PretrainJob(
                 label="weight_transfer",
@@ -410,20 +410,13 @@ def pretrain_stage(
     )
 
     transfer_model_path = None
-    transfer_state_dict = None
     transfer_projection_assets = None
+    transfer_state_dict = None
     if not args.skip_transfer:
         transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
         if not transfer_seed_path.exists():
             raise FileNotFoundError(f"Missing transfer checkpoint for seed {args.transfer_seed}: {transfer_seed_path}")
         transfer_model_path = str(transfer_seed_path)
-        merged_state_path = basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME
-        if not merged_state_path.exists():
-            raise FileNotFoundError(
-                f"Missing merged rebasin transfer state: {merged_state_path}. "
-                "Run fit_initializations stage first or include 'fit_initializations' in --stages."
-            )
-        transfer_state_dict = torch.load(merged_state_path, map_location="cpu")
         transfer_projection_assets = load_transfer_projection_assets(
             transfer_model_path,
             bf16=cfg.training.bf16,

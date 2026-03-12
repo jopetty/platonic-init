@@ -126,6 +126,13 @@ Optional: generate a Dyck dataset with power-law depth sampling:
 uv run python scripts/generate_dyck.py --n-samples 5000 --max-depth 10 --alpha 1.5 --output data/dyck_d10_5k.txt
 ```
 
+For paper-style formal-language corpora, use the generalized generator:
+```bash
+uv run python scripts/generate_formal_language.py --language shuffle_dyck --k 64 --n-samples 20000 --max-depth 10 --output data/shuffle_dyck_k64_d10_20k.txt
+uv run python scripts/generate_formal_language.py --language dyck --k 64 --n-samples 20000 --max-depth 10 --output data/dyck_k64_d10_20k.txt
+uv run python scripts/generate_formal_language.py --language ww --ww-alphabet-size 64 --n-samples 20000 --output data/ww_k64_20k.txt
+```
+
 Demo config for a fast 2-seed Dyck run:
 ```bash
 ./scripts/run_pipeline.sh configs/experiment_dyck_d10_20k_demo.yaml
@@ -153,6 +160,14 @@ Validate stage prerequisites without running:
 ```bash
 uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stages pretrain --doctor
 ```
+
+For the tiny-GPT2 paper-replication proxy on C4 using direct checkpoint transfer:
+```bash
+uv run python scripts/generate_formal_language.py --language shuffle_dyck --k 64 --n-samples 20000 --max-depth 10 --output data/shuffle_dyck_k64_d10_20k.txt
+uv run python -m platonic_init.pipeline --config configs/experiment_tinygpt2_shuffle_dyck_c4_weight_transfer.yaml --stages prepretrain
+uv run python -m platonic_init.pipeline --config configs/experiment_tinygpt2_shuffle_dyck_c4_weight_transfer.yaml --stages pretrain --skip-fits
+```
+This transfer-only path now loads the selected pre-pretrained checkpoint directly for `weight_transfer`; it does not require analytic-fit artifacts.
 
 Configs are stage-scoped only. The canonical shape is:
 ```yaml
