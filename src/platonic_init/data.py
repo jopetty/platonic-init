@@ -234,6 +234,14 @@ def _limit_dataset(ds: Dataset, max_samples: int | None, seed: int) -> Dataset:
     return ds.shuffle(seed=seed).select(range(max_samples))
 
 
+def _hf_split_with_limit(split: str, max_samples: int | None) -> str:
+    """Request only the needed prefix of a HF split when a hard sample cap is known."""
+
+    if max_samples is None:
+        return split
+    return f"{split}[:{max_samples}]"
+
+
 def load_init_eval_datasets(
     cfg: InitEvalDataConfig,
     default_local_path: str,
@@ -252,13 +260,13 @@ def load_init_eval_datasets(
         train_ds = load_dataset(
             cfg.dataset_name,
             cfg.dataset_config_name,
-            split=cfg.train_split,
+            split=_hf_split_with_limit(cfg.train_split, cfg.max_train_samples),
         )
         if cfg.eval_split:
             eval_ds = load_dataset(
                 cfg.dataset_name,
                 cfg.dataset_config_name,
-                split=cfg.eval_split,
+                split=_hf_split_with_limit(cfg.eval_split, cfg.max_eval_samples),
             )
         else:
             split = train_ds.train_test_split(test_size=eval_ratio, seed=seed)
