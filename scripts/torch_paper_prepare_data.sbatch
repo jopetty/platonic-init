@@ -2,8 +2,8 @@
 #SBATCH --job-name=paper-prepare-data
 #SBATCH --account=torch_pr_287_general
 #SBATCH --gres=none
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
 #SBATCH --time=04:00:00
 #SBATCH --output=slurm-%x-%j.out
 
