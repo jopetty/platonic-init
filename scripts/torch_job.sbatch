@@ -15,8 +15,13 @@ IMAGE="${IMAGE:-/share/apps/images/cuda12.3.2-cudnn9.0.0-ubuntu-22.04.4.sif}"
 VENV_PYTHON="${VENV_PYTHON:-/ext3/venvs/platonic-init/bin/python}"
 CONFIG_PATH="${CONFIG_PATH:-configs/experiment.yaml}"
 APP_CMD="${APP_CMD:-${VENV_PYTHON} -m platonic_init.pipeline --config ${CONFIG_PATH}}"
+HF_HOME="${HF_HOME:-/scratch/$USER/hf}"
+HF_HUB_CACHE="${HF_HUB_CACHE:-${HF_HOME}/hub}"
+HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${HF_HOME}/datasets}"
 
 cd "${REPO_ROOT}"
+
+mkdir -p "${HF_HUB_CACHE}" "${HF_DATASETS_CACHE}"
 
 singularity exec --nv \
   --overlay "${OVERLAY}:ro" \
@@ -24,6 +29,9 @@ singularity exec --nv \
   /bin/bash -lc "
     set -euo pipefail
     source /ext3/env.sh
+    export HF_HOME='${HF_HOME}'
+    export HUGGINGFACE_HUB_CACHE='${HF_HUB_CACHE}'
+    export HF_DATASETS_CACHE='${HF_DATASETS_CACHE}'
     cd '${REPO_ROOT}'
     ${APP_CMD}
   "
