@@ -1,0 +1,69 @@
+data_path: data/shuffle_dyck_k64_d10_20k.txt
+
+stages:
+  prepretrain:
+    training:
+      model_name_or_path: gpt2
+      block_size: 1024
+      max_steps: 1000
+      per_device_train_batch_size: 8
+      gradient_accumulation_steps: 1
+      learning_rate: 0.0003
+      warmup_steps: 100
+      warmup_ratio: 0.03
+      min_lr_rate: 0.1
+      weight_decay: 0.01
+      save_steps: 200
+      logging_steps: 10
+      pretrain_packing: true
+      prepretrain_char_tokenizer: false
+      bf16: true
+      fp16: false
+      prefer_flash_attention_2: false
+      report_to: ["wandb"]
+      run_name: gpt2-shuffle-dyck-c4
+      wandb_project: platonic-init
+      wandb_entity: null
+    sweep:
+      seeds: [0, 1, 2]
+      output_root: runs
+      experiment_name: gpt2_c4_ppt_reproduction
+  fit_initializations:
+    analysis:
+      top_k_components: 4
+      max_params_per_tensor: null
+      dtype: float32
+    rebasin:
+      enabled: true
+      max_iter: 50
+      seed: 0
+    fit_blocks:
+      - name: chebyshev_d6
+        basis_type: chebyshev
+        chebyshev_degree: 6
+      - name: chebyshev_d12
+        basis_type: chebyshev
+        chebyshev_degree: 12
+      - name: chebyshev_d24
+        basis_type: chebyshev
+        chebyshev_degree: 24
+      - name: chebyshev_d48
+        basis_type: chebyshev
+        chebyshev_degree: 48
+      - name: chebyshev_d128
+        basis_type: chebyshev
+        chebyshev_degree: 128
+  pretrain_eval:
+    train_steps: 10000
+    eval_every: 100
+    logging_steps: 10
+    init_eval_data:
+      source: hf
+      dataset_name: allenai/c4
+      dataset_config_name: en
+      train_split: train
+      eval_split: validation
+      text_field: text
+      local_data_path: null
+      max_train_samples: null
+      max_eval_samples: 1000
