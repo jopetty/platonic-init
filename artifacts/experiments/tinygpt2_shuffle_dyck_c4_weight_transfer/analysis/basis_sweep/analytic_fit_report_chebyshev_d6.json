@@ -1,0 +1,201 @@
+{
+  "tensors": {
+    "transformer.h.0.attn.c_attn.bias": {
+      "component_relative_errors": [
+        1.6258348476516034e-15,
+        2.6038607639144666e-15
+      ],
+      "mean_component_relative_error": 2.114847805783035e-15
+    },
+    "transformer.h.0.attn.c_attn.weight": {
+      "component_relative_errors": [
+        0.5916245511862261,
+        0.8423310986175511
+      ],
+      "mean_component_relative_error": 0.7169778249018885
+    },
+    "transformer.h.0.attn.c_proj.bias": {
+      "component_relative_errors": [
+        2.220446124891448e-16,
+        2.220446124891448e-16
+      ],
+      "mean_component_relative_error": 2.220446124891448e-16
+    },
+    "transformer.h.0.attn.c_proj.weight": {
+      "component_relative_errors": [
+        5.578801771069932e-16,
+        6.162737817022112e-16
+      ],
+      "mean_component_relative_error": 5.870769794046022e-16
+    },
+    "transformer.h.0.ln_1.bias": {
+      "component_relative_errors": [
+        2.7755576242626664e-16,
+        2.4825342093276567e-16
+      ],
+      "mean_component_relative_error": 2.629045916795162e-16
+    },
+    "transformer.h.0.ln_1.weight": {
+      "component_relative_errors": [
+        2.9504581591022257e-16,
+        2.7755575615601155e-16
+      ],
+      "mean_component_relative_error": 2.863007860331171e-16
+    },
+    "transformer.h.0.ln_2.bias": {
+      "component_relative_errors": [
+        0.0,
+        4.965068354096226e-16
+      ],
+      "mean_component_relative_error": 2.482534177048113e-16
+    },
+    "transformer.h.0.ln_2.weight": {
+      "component_relative_errors": [
+        2.9504581591022257e-16,
+        2.7755575615601155e-16
+      ],
+      "mean_component_relative_error": 2.863007860331171e-16
+    },
+    "transformer.h.0.mlp.c_fc.bias": {
+      "component_relative_errors": [
+        0.001279762791600956,
+        0.35467978281319074
+      ],
+      "mean_component_relative_error": 0.17797977280239585
+    },
+    "transformer.h.0.mlp.c_fc.weight": {
+      "component_relative_errors": [
+        0.5394615311133868,
+        0.5786136347667821
+      ],
+      "mean_component_relative_error": 0.5590375829400844
+    },
+    "transformer.h.0.mlp.c_proj.bias": {
+      "component_relative_errors": [
+        4.002965798859561e-16,
+        3.1401847262506823e-16
+      ],
+      "mean_component_relative_error": 3.571575262555122e-16
+    },
+    "transformer.h.0.mlp.c_proj.weight": {
+      "component_relative_errors": [
+        0.9178298604374686,
+        0.8342616652144891
+      ],
+      "mean_component_relative_error": 0.8760457628259788
+    },
+    "transformer.h.1.attn.c_attn.bias": {
+      "component_relative_errors": [
+        2.3988217771719387e-15,
+        2.6252142666992738e-15
+      ],
+      "mean_component_relative_error": 2.5120180219356064e-15
+    },
+    "transformer.h.1.attn.c_attn.weight": {
+      "component_relative_errors": [
+        0.43267028654156625,
+        0.7758274342900582
+      ],
+      "mean_component_relative_error": 0.6042488604158123
+    },
+    "transformer.h.1.attn.c_proj.bias": {
+      "component_relative_errors": [
+        4.002965798859561e-16,
+        3.1401847262506823e-16
+      ],
+      "mean_component_relative_error": 3.571575262555122e-16
+    },
+    "transformer.h.1.attn.c_proj.weight": {
+      "component_relative_errors": [
+        8.424400416191309e-16,
+        5.440730119270078e-16
+      ],
+      "mean_component_relative_error": 6.932565267730694e-16
+    },
+    "transformer.h.1.ln_1.bias": {
+      "component_relative_errors": [
+        3.1401849054563226e-16,
+        4.440892081655606e-16
+      ],
+      "mean_component_relative_error": 3.790538493555964e-16
+    },
+    "transformer.h.1.ln_1.weight": {
+      "component_relative_errors": [
+        2.9504581591022257e-16,
+        2.7755575615601155e-16
+      ],
+      "mean_component_relative_error": 2.863007860331171e-16
+    },
+    "transformer.h.1.ln_2.bias": {
+      "component_relative_errors": [
+        1.1102230192182802e-16,
+        2.2204460384365605e-16
+      ],
+      "mean_component_relative_error": 1.6653345288274203e-16
+    },
+    "transformer.h.1.ln_2.weight": {
+      "component_relative_errors": [
+        2.9504581591022257e-16,
+        2.7755575615601155e-16
+      ],
+      "mean_component_relative_error": 2.863007860331171e-16
+    },
+    "transformer.h.1.mlp.c_fc.bias": {
+      "component_relative_errors": [
+        0.3592744366406725,
+        0.4917741735806038
+      ],
+      "mean_component_relative_error": 0.42552430511063816
+    },
+    "transformer.h.1.mlp.c_fc.weight": {
+      "component_relative_errors": [
+        0.6266161462750914,
+        0.5499135959146597
+      ],
+      "mean_component_relative_error": 0.5882648710948756
+    },
+    "transformer.h.1.mlp.c_proj.bias": {
+      "component_relative_errors": [
+        2.4825340504261083e-16,
+        3.3306689359264017e-16
+      ],
+      "mean_component_relative_error": 2.906601493176255e-16
+    },
+    "transformer.h.1.mlp.c_proj.weight": {
+      "component_relative_errors": [
+        0.7063374144577679,
+        0.7819840516795613
+      ],
+      "mean_component_relative_error": 0.7441607330686646
+    },
+    "transformer.ln_f.bias": {
+      "component_relative_errors": [
+        3.1401849711063867e-16,
+        4.440892174498817e-16
+      ],
+      "mean_component_relative_error": 3.790538572802602e-16
+    },
+    "transformer.ln_f.weight": {
+      "component_relative_errors": [
+        2.9504581591022257e-16,
+        2.7755575615601155e-16
+      ],
+      "mean_component_relative_error": 2.863007860331171e-16
+    },
+    "transformer.wpe.weight": {
+      "component_relative_errors": [
+        0.9982891889124141,
+        0.9974695678013444
+      ],
+      "mean_component_relative_error": 0.9978793783568793
+    },
+    "transformer.wte.weight": {
+      "component_relative_errors": [
+        0.9999999928397443,
+        0.9999657951683177
+      ],
+      "mean_component_relative_error": 0.999982894004031
+    }
+  },
+  "mean_relative_error": 0.23893221376861637
+}
