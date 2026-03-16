@@ -52,6 +52,8 @@ stages:
         poly_degree: 5
         exp_scales: [0.5, 1.0, 2.0, 4.0]
   pretrain_eval:
+    train_steps: 10000
+    eval_every: 100
     init_eval_data:
       source: hf
       dataset_name: wikitext
