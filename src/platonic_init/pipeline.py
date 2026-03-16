@@ -23,7 +23,12 @@ from .data import (
     load_or_create_tokenized_dataset,
     tokenizer_cache_key,
 )
-from .initialization import build_summary, fit_analytic_subspace, load_state_dict, tensorwise_pca
+from .initialization import (
+    build_summary,
+    fit_analytic_subspace,
+    load_state_dict,
+    tensorwise_pca,
+)
 from .rebasin import align_states_for_pca
 from .support import (
     analysis_artifacts_dir,
@@ -31,12 +36,11 @@ from .support import (
     dataset_cache_root,
     experiment_artifacts_dir,
     load_project_env,
+    prepretraining_seed_dir,
     pretraining_artifacts_dir,
     pretraining_init_eval_basis_root,
-    prepretraining_seed_dir,
 )
 from .training import PretrainJob, load_transfer_projection_assets, run_variant, sweep
-
 
 STAGE_PREPRETRAIN = "prepretrain"
 STAGE_FIT_INITIALIZATIONS = "fit_initializations"
@@ -48,7 +52,9 @@ MERGED_TRANSFER_STATE_NAME = "merged_rebasin_state.pt"
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the end-to-end pipeline."""
 
-    parser = argparse.ArgumentParser(description="End-to-end platonic initialization experiment pipeline")
+    parser = argparse.ArgumentParser(
+        description="End-to-end platonic initialization experiment pipeline"
+    )
     parser.add_argument("--config", type=str, default="configs/experiment.yaml")
     parser.add_argument(
         "--stages",
@@ -66,13 +72,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval-every", type=int, default=None)
-    parser.add_argument("--init-mode", type=str, default="sampled", choices=["mean", "sampled"])
+    parser.add_argument(
+        "--init-mode", type=str, default="sampled", choices=["mean", "sampled"]
+    )
     parser.add_argument("--transfer-seed", type=int, default=0)
     parser.add_argument("--skip-transfer", action="store_true")
     parser.add_argument("--skip-random", action="store_true")
     parser.add_argument("--skip-fits", action="store_true")
     parser.add_argument("--fit-names", nargs="+", default=None)
-    parser.add_argument("--doctor", action="store_true", help="Validate required inputs for selected stages and exit")
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Validate required inputs for selected stages and exit",
+    )
     return parser.parse_args()
 
 
@@ -95,7 +107,9 @@ def fit_block_slug(name: str) -> str:
     return slug
 
 
-def selected_fit_blocks(cfg: ExperimentConfig, args: argparse.Namespace) -> list[AnalyticFitBlockConfig]:
+def selected_fit_blocks(
+    cfg: ExperimentConfig, args: argparse.Namespace
+) -> list[AnalyticFitBlockConfig]:
     """Return the configured analytic fit blocks selected by CLI filters."""
 
     all_blocks = list(cfg.fit_blocks)
@@ -126,7 +140,9 @@ def run_fit_jobs(args: argparse.Namespace) -> bool:
     return not bool(getattr(args, "skip_fits", False))
 
 
-def merge_results_by_label(existing: list[dict[str, object]], updated: list[dict[str, object]]) -> list[dict[str, object]]:
+def merge_results_by_label(
+    existing: list[dict[str, object]], updated: list[dict[str, object]]
+) -> list[dict[str, object]]:
     """Merge result rows by label while preserving their original order."""
 
     by_label: dict[str, dict[str, object]] = {}
@@ -160,7 +176,9 @@ def write_pretraining_summaries(
                 merged_results = merge_results_by_label(existing_results, results)
         except Exception:
             pass
-    init_eval_path.write_text(json.dumps({"results": merged_results}, indent=2), encoding="utf-8")
+    init_eval_path.write_text(
+        json.dumps({"results": merged_results}, indent=2), encoding="utf-8"
+    )
 
     curves_payload = {
         "config": args.config,
@@ -177,7 +195,9 @@ def write_pretraining_summaries(
             payload = json.loads(curves_out.read_text(encoding="utf-8"))
             existing_results = payload.get("results", [])
             if isinstance(existing_results, list):
-                curves_payload["results"] = merge_results_by_label(existing_results, results)
+                curves_payload["results"] = merge_results_by_label(
+                    existing_results, results
+                )
         except Exception:
             pass
     curves_out.write_text(json.dumps(curves_payload, indent=2), encoding="utf-8")
@@ -210,7 +230,9 @@ def infer_num_attention_heads(model_dir: Path) -> int | None:
     return None
 
 
-def build_merged_state(states: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+def build_merged_state(
+    states: list[dict[str, torch.Tensor]],
+) -> dict[str, torch.Tensor]:
     """Average matching floating-point tensors across aligned seed checkpoints."""
 
     if not states:
@@ -221,10 +243,19 @@ def build_merged_state(states: list[dict[str, torch.Tensor]]) -> dict[str, torch
         ref = states[0][key]
         if not torch.is_tensor(ref):
             continue
-        if not all(key in state and tuple(state[key].shape) == tuple(ref.shape) for state in states):
+        if not all(
+            key in state and tuple(state[key].shape) == tuple(ref.shape)
+            for state in states
+        ):
             continue
         if torch.is_floating_point(ref):
-            stacked = torch.stack([state[key].detach().to(dtype=torch.float32, device="cpu") for state in states], dim=0)
+            stacked = torch.stack(
+                [
+                    state[key].detach().to(dtype=torch.float32, device="cpu")
+                    for state in states
+                ],
+                dim=0,
+            )
             merged[key] = stacked.mean(dim=0).to(dtype=ref.dtype)
         else:
             merged[key] = ref.detach().clone()
@@ -242,7 +273,9 @@ def doctor_checks(
 
     issues: list[str] = []
     if run_fit_initializations:
-        missing_ckpts = [path for path in default_checkpoint_dirs(cfg) if not path.exists()]
+        missing_ckpts = [
+            path for path in default_checkpoint_dirs(cfg) if not path.exists()
+        ]
         if missing_ckpts:
             issues.append(f"Missing pre-pretraining checkpoints: {missing_ckpts}")
     if not run_pretrain:
@@ -251,7 +284,10 @@ def doctor_checks(
     if not args.skip_transfer:
         transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
         if not transfer_seed_path.exists():
-            issues.append(f"Missing transfer checkpoint seed_{args.transfer_seed}: {transfer_seed_path}")
+            issues.append(
+                "Missing transfer checkpoint "
+                f"seed_{args.transfer_seed}: {transfer_seed_path}"
+            )
     if run_fit_initializations or not run_fit_jobs(args):
         return issues
 
@@ -259,11 +295,17 @@ def doctor_checks(
     for block in selected_fit_blocks(cfg, args):
         analytic_path = sweep_dir / f"analytic_subspace_{fit_block_slug(block.name)}.pt"
         if not analytic_path.exists():
-            issues.append(f"Missing analytic subspace for fit '{block.name}': {analytic_path} (run fit_initializations stage first)")
+            issues.append(
+                f"Missing analytic subspace for fit '{block.name}': "
+                f"{analytic_path} (run fit_initializations stage first)"
+            )
     if not args.skip_transfer:
         merged_path = sweep_dir / MERGED_TRANSFER_STATE_NAME
         if not merged_path.exists():
-            issues.append(f"Missing merged rebasin transfer state: {merged_path} (run fit_initializations stage first)")
+            issues.append(
+                "Missing merged rebasin transfer state: "
+                f"{merged_path} (run fit_initializations stage first)"
+            )
     return issues
 
 
@@ -289,7 +331,9 @@ def fit_initializations_stage(
             seed=int(cfg.rebasin.seed),
             num_attention_heads=infer_num_attention_heads(checkpoints[0]),
         )
-        (analysis_artifacts / "rebasin_report.json").write_text(json.dumps(rebasin_report, indent=2), encoding="utf-8")
+        (analysis_artifacts / "rebasin_report.json").write_text(
+            json.dumps(rebasin_report, indent=2), encoding="utf-8"
+        )
 
     merged_state = build_merged_state(states)
     torch.save(merged_state, basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME)
@@ -307,7 +351,9 @@ def fit_initializations_stage(
         fit_cfg = block.to_fit_config()
         basis_subspace, basis_report = fit_analytic_subspace(subspace, fit_cfg)
         slug = fit_block_slug(block.name)
-        torch.save(basis_subspace, basis_sweep_artifacts / f"analytic_subspace_{slug}.pt")
+        torch.save(
+            basis_subspace, basis_sweep_artifacts / f"analytic_subspace_{slug}.pt"
+        )
         (basis_sweep_artifacts / f"analytic_fit_report_{slug}.json").write_text(
             json.dumps(basis_report, indent=2),
             encoding="utf-8",
@@ -315,7 +361,9 @@ def fit_initializations_stage(
         basis_subspaces[block.name] = basis_subspace
         fit_manifest[block.name] = {"slug": slug, "basis_type": fit_cfg.basis_type}
 
-    (basis_sweep_artifacts / "fit_blocks.json").write_text(json.dumps(fit_manifest, indent=2), encoding="utf-8")
+    (basis_sweep_artifacts / "fit_blocks.json").write_text(
+        json.dumps(fit_manifest, indent=2), encoding="utf-8"
+    )
     return basis_subspaces
 
 
@@ -329,11 +377,14 @@ def load_basis_subspaces_stage(
 
     basis_subspaces: dict[str, dict[str, object]] = {}
     for block in selected_fit_blocks(cfg, args):
-        analytic_path = basis_sweep_artifacts / f"analytic_subspace_{fit_block_slug(block.name)}.pt"
+        analytic_path = (
+            basis_sweep_artifacts / f"analytic_subspace_{fit_block_slug(block.name)}.pt"
+        )
         if not analytic_path.exists():
             raise FileNotFoundError(
-                f"Missing analytic subspace for fit '{block.name}' at {analytic_path}. "
-                "Run fit_initializations stage first or include 'fit_initializations' in --stages."
+                f"Missing analytic subspace for fit '{block.name}' at "
+                f"{analytic_path}. Run fit_initializations stage first or "
+                "include 'fit_initializations' in --stages."
             )
         basis_subspaces[block.name] = torch.load(analytic_path, map_location="cpu")
     return basis_subspaces
@@ -362,7 +413,9 @@ def build_pretrain_jobs(
         )
 
     if run_fit_jobs(args):
-        platonic_variant = "platonic_mean" if args.init_mode == "mean" else "platonic_sampled"
+        platonic_variant = (
+            "platonic_mean" if args.init_mode == "mean" else "platonic_sampled"
+        )
         for block in selected_fit_blocks(cfg, args):
             jobs.append(
                 PretrainJob(
@@ -370,21 +423,30 @@ def build_pretrain_jobs(
                     variant=platonic_variant,
                     init_mode=args.init_mode,
                     out_name=block.name,
-                    run_name=f"{cfg.sweep.experiment_name}-init-eval-{block.name}-{args.init_mode}",
+                    run_name=(
+                        f"{cfg.sweep.experiment_name}-init-eval-"
+                        f"{block.name}-{args.init_mode}"
+                    ),
                     analytic_subspace=basis_subspaces[block.name],
                 )
             )
 
     if not args.skip_transfer:
         if transfer_model_path is None:
-            raise ValueError("A transfer checkpoint path is required when transfer evaluation is enabled")
+            raise ValueError(
+                "A transfer checkpoint path is required when transfer "
+                "evaluation is enabled"
+            )
         jobs.append(
             PretrainJob(
                 label="weight_transfer",
                 variant="weight_transfer",
                 init_mode="transfer",
                 out_name="weight_transfer",
-                run_name=f"{cfg.sweep.experiment_name}-init-eval-weight-transfer-seed{args.transfer_seed}",
+                run_name=(
+                    f"{cfg.sweep.experiment_name}-init-eval-"
+                    f"weight-transfer-seed{args.transfer_seed}"
+                ),
                 transfer_model_path=transfer_model_path,
                 transfer_state_dict=transfer_state_dict,
             )
@@ -457,7 +519,10 @@ def pretrain_stage(
     if not args.skip_transfer:
         transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
         if not transfer_seed_path.exists():
-            raise FileNotFoundError(f"Missing transfer checkpoint for seed {args.transfer_seed}: {transfer_seed_path}")
+            raise FileNotFoundError(
+                f"Missing transfer checkpoint for seed "
+                f"{args.transfer_seed}: {transfer_seed_path}"
+            )
         transfer_model_path = str(transfer_seed_path)
         transfer_projection_assets = load_transfer_projection_assets(
             transfer_model_path,
@@ -475,16 +540,25 @@ def pretrain_stage(
     if not jobs:
         raise ValueError(
             "No pretrain initialization jobs selected. "
-            "Unset --skip-random/--skip-fits/--skip-transfer to select at least one initialization."
+            "Unset --skip-random/--skip-fits/--skip-transfer to select at "
+            "least one initialization."
         )
 
     eval_root = pretraining_init_eval_basis_root(cfg)
     eval_root.mkdir(parents=True, exist_ok=True)
 
     results: list[dict[str, object]] = []
-    top_bar = tqdm(total=len(jobs), desc="pretraining 0/0", position=0, leave=True, dynamic_ncols=True)
+    top_bar = tqdm(
+        total=len(jobs),
+        desc="pretraining 0/0",
+        position=0,
+        leave=True,
+        dynamic_ncols=True,
+    )
     for index, job in enumerate(jobs, start=1):
-        top_bar.set_description(f"pretraining {index - 1}/{len(jobs)} | init={job.label}")
+        top_bar.set_description(
+            f"pretraining {index - 1}/{len(jobs)} | init={job.label}"
+        )
         result = run_variant(
             variant=job.variant,
             model_name_or_path=cfg.training.model_name_or_path,
@@ -547,7 +621,12 @@ def main() -> None:
 
     run_prepretrain, run_fit_initializations, run_pretrain = stage_plan(args.stages)
     if args.doctor:
-        issues = doctor_checks(cfg, args, run_fit_initializations=run_fit_initializations, run_pretrain=run_pretrain)
+        issues = doctor_checks(
+            cfg,
+            args,
+            run_fit_initializations=run_fit_initializations,
+            run_pretrain=run_pretrain,
+        )
         if issues:
             for issue in issues:
                 print(f"[doctor] ERROR: {issue}")
@@ -562,7 +641,12 @@ def main() -> None:
     analysis_artifacts = analysis_artifacts_dir(cfg)
     pretraining_artifacts = pretraining_artifacts_dir(cfg)
     basis_sweep_artifacts = basis_sweep_dir(cfg)
-    for path in (artifacts, analysis_artifacts, pretraining_artifacts, basis_sweep_artifacts):
+    for path in (
+        artifacts,
+        analysis_artifacts,
+        pretraining_artifacts,
+        basis_sweep_artifacts,
+    ):
         path.mkdir(parents=True, exist_ok=True)
 
     basis_subspaces: dict[str, dict] = {}

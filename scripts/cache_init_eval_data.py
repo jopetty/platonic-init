@@ -18,9 +18,21 @@ from platonic_init.support import dataset_cache_root, load_project_env
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", required=True, help="Path to experiment config YAML")
-    parser.add_argument("--eval-ratio", type=float, default=0.1, help="Fallback eval split ratio for local datasets")
-    parser.add_argument("--seed", type=int, default=0, help="Seed used for deterministic dataset subsampling")
+    parser.add_argument(
+        "--config", required=True, help="Path to experiment config YAML"
+    )
+    parser.add_argument(
+        "--eval-ratio",
+        type=float,
+        default=0.1,
+        help="Fallback eval split ratio for local datasets",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Seed used for deterministic dataset subsampling",
+    )
     return parser.parse_args()
 
 

@@ -36,8 +36,12 @@ class FormalLanguageTests(unittest.TestCase):
         self.assertTrue(is_valid_ww(tokens))
 
     def test_generate_formal_language_lines_is_reproducible(self) -> None:
-        first = generate_formal_language_lines(language="shuffle_dyck", n_samples=5, seed=7, max_depth=3, k=3)
-        second = generate_formal_language_lines(language="shuffle_dyck", n_samples=5, seed=7, max_depth=3, k=3)
+        first = generate_formal_language_lines(
+            language="shuffle_dyck", n_samples=5, seed=7, max_depth=3, k=3
+        )
+        second = generate_formal_language_lines(
+            language="shuffle_dyck", n_samples=5, seed=7, max_depth=3, k=3
+        )
         self.assertEqual(first, second)
 
     def test_compact_single_dyck_uses_parentheses(self) -> None:

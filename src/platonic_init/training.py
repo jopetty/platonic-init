@@ -6,6 +6,7 @@ and evaluation runs so the experiment lifecycle can be read in one place.
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import os
 import platform
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from datasets import Dataset
+from datasets import Dataset, IterableDataset
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, TrainerCallback, set_seed
 from trl import SFTConfig, SFTTrainer
@@ -46,11 +47,11 @@ def resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
     if importlib.util.find_spec("flash_attn") is None:
         return None
     try:
-        import flash_attn_2_cuda  # noqa: F401
+        importlib.import_module("flash_attn_2_cuda")
     except Exception as exc:
         warnings.warn(
-            f"Flash Attention 2 requested but unavailable in this runtime; falling back to default attention. "
-            f"Import failed with: {exc!r}",
+            "Flash Attention 2 requested but unavailable in this runtime; "
+            f"falling back to default attention. Import failed with: {exc!r}",
             stacklevel=2,
         )
         return None
@@ -211,9 +212,14 @@ def load_transfer_projection_assets(
     output_embeddings = source_model.get_output_embeddings()
     return TransferProjectionAssets(
         source_vocab=source_tokenizer.get_vocab(),
-        input_embeddings=source_model.get_input_embeddings().weight.detach().to(device="cpu").clone(),
+        input_embeddings=source_model.get_input_embeddings()
+        .weight.detach()
+        .to(device="cpu")
+        .clone(),
         output_embeddings=(
-            output_embeddings.weight.detach().to(device="cpu").clone() if output_embeddings is not None else None
+            output_embeddings.weight.detach().to(device="cpu").clone()
+            if output_embeddings is not None
+            else None
         ),
     )
 
@@ -232,7 +238,9 @@ def copy_matching_weights(source: torch.nn.Module, target: torch.nn.Module) -> N
     target.load_state_dict(filtered, strict=False)
 
 
-def copy_matching_weights_from_state(source_state: dict[str, torch.Tensor], target: torch.nn.Module) -> None:
+def copy_matching_weights_from_state(
+    source_state: dict[str, torch.Tensor], target: torch.nn.Module
+) -> None:
     """Copy matching floating-point tensors from a plain state dict."""
 
     target_state = target.state_dict()
@@ -240,8 +248,14 @@ def copy_matching_weights_from_state(source_state: dict[str, torch.Tensor], targ
     for key, value in source_state.items():
         if key in {"transformer.wte.weight", "lm_head.weight"}:
             continue
-        if key in target_state and target_state[key].shape == value.shape and torch.is_floating_point(value):
-            filtered[key] = value.detach().to(dtype=target_state[key].dtype, device=target_state[key].device)
+        if (
+            key in target_state
+            and target_state[key].shape == value.shape
+            and torch.is_floating_point(value)
+        ):
+            filtered[key] = value.detach().to(
+                dtype=target_state[key].dtype, device=target_state[key].device
+            )
     target.load_state_dict(filtered, strict=False)
 
 
@@ -270,7 +284,11 @@ def project_shared_token_embeddings(
         copied += 1
 
     out_embed = target_model.get_output_embeddings()
-    if out_embed is not None and source_output_embed is not None and source_output_embed.shape == target_embed.shape:
+    if (
+        out_embed is not None
+        and source_output_embed is not None
+        and source_output_embed.shape == target_embed.shape
+    ):
         out_embed.weight.data.copy_(target_embed)
     return copied
 
@@ -303,9 +321,15 @@ def apply_prepretrain_projection(
             source_tokenizer = load_saved_tokenizer(embedding_transfer_model_path)
             projection_assets = TransferProjectionAssets(
                 source_vocab=source_tokenizer.get_vocab(),
-                input_embeddings=source_model.get_input_embeddings().weight.detach().to(device="cpu").clone(),
+                input_embeddings=source_model.get_input_embeddings()
+                .weight.detach()
+                .to(device="cpu")
+                .clone(),
                 output_embeddings=(
-                    source_model.get_output_embeddings().weight.detach().to(device="cpu").clone()
+                    source_model.get_output_embeddings()
+                    .weight.detach()
+                    .to(device="cpu")
+                    .clone()
                     if source_model.get_output_embeddings() is not None
                     else None
                 ),
@@ -320,7 +344,9 @@ def apply_prepretrain_projection(
     if copy_non_embedding_weights:
         if source_model is None:
             if embedding_transfer_model_path is None:
-                raise ValueError("copy_non_embedding_weights requires a loaded source model")
+                raise ValueError(
+                    "copy_non_embedding_weights requires a loaded source model"
+                )
             source_model = load_pretrained_model(
                 embedding_transfer_model_path,
                 bf16=bf16,
@@ -414,7 +440,7 @@ def run_variant(
     variant: str,
     model_name_or_path: str,
     tokenizer,
-    train_ds: Dataset,
+    train_ds: Dataset | IterableDataset,
     eval_ds: Dataset,
     out_dir: Path,
     train_steps: int,
@@ -470,7 +496,8 @@ def run_variant(
             copied_embedding_rows = apply_prepretrain_projection(
                 target_model=model,
                 target_tokenizer=tokenizer,
-                embedding_transfer_model_path=embedding_transfer_model_path or transfer_model_path,
+                embedding_transfer_model_path=embedding_transfer_model_path
+                or transfer_model_path,
                 projection_assets=embedding_transfer_assets,
                 copy_non_embedding_weights=False,
                 bf16=bf16,
@@ -478,7 +505,10 @@ def run_variant(
             )
         else:
             if transfer_model_path is None:
-                raise ValueError("transfer_state_dict or transfer_model_path is required for weight_transfer variant")
+                raise ValueError(
+                    "transfer_state_dict or transfer_model_path is required "
+                    "for weight_transfer variant"
+                )
             copied_embedding_rows = apply_prepretrain_projection(
                 target_model=model,
                 target_tokenizer=tokenizer,
@@ -495,7 +525,9 @@ def run_variant(
         latent = None
         if variant == "platonic_sampled":
             latent = sample_latent(analytic_subspace, seed=latent_seed)
-        apply_platonic_init(model, analytic_subspace, latent=latent, latent_scale=latent_scale)
+        apply_platonic_init(
+            model, analytic_subspace, latent=latent, latent_scale=latent_scale
+        )
 
     if variant != "weight_transfer":
         copied_embedding_rows = apply_prepretrain_projection(
@@ -557,8 +589,19 @@ def run_variant(
     final_metrics = trainer.evaluate()
     eval_curve = extract_eval_curve(trainer.state.log_history)
     train_curve = extract_train_curve(trainer.state.log_history)
-    eval_curve.insert(0, {"step": 0.0, "eval_loss": float(initial_metrics.get("eval_loss", float("nan")))})
-    eval_curve.append({"step": float(trainer.state.global_step), "eval_loss": float(final_metrics.get("eval_loss", float("nan")))})
+    eval_curve.insert(
+        0,
+        {
+            "step": 0.0,
+            "eval_loss": float(initial_metrics.get("eval_loss", float("nan"))),
+        },
+    )
+    eval_curve.append(
+        {
+            "step": float(trainer.state.global_step),
+            "eval_loss": float(final_metrics.get("eval_loss", float("nan"))),
+        }
+    )
 
     deduped_curve: list[dict[str, float]] = []
     seen_steps: set[float] = set()
@@ -570,7 +613,11 @@ def run_variant(
         deduped_curve.append(point)
     deduped_curve.sort(key=lambda point: point["step"])
 
-    eval_losses = [point["eval_loss"] for point in deduped_curve if point["eval_loss"] == point["eval_loss"]]
+    eval_losses = [
+        point["eval_loss"]
+        for point in deduped_curve
+        if point["eval_loss"] == point["eval_loss"]
+    ]
     best_eval_loss = min(eval_losses) if eval_losses else float("nan")
 
     out = {
@@ -644,7 +691,9 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         dataset_text_field="text",
         max_length=max_length,
         num_train_epochs=1,
-        max_steps=config.training.max_steps if config.training.max_steps is not None else -1,
+        max_steps=config.training.max_steps
+        if config.training.max_steps is not None
+        else -1,
         per_device_train_batch_size=config.training.per_device_train_batch_size,
         gradient_accumulation_steps=config.training.gradient_accumulation_steps,
         learning_rate=config.training.learning_rate,
