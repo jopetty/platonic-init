@@ -1,0 +1,36 @@
+{
+  "results": [
+    {
+      "basis": "chebyshev",
+      "fit_mean_relative_error": 0.1817392161924174,
+      "random_eval_loss": 10.500370979309082,
+      "platonic_mean_eval_loss": 10.509027481079102,
+      "platonic_sampled_eval_loss": 10.497251510620117,
+      "delta_sampled_vs_random": -0.0031194686889648438
+    },
+    {
+      "basis": "fourier",
+      "fit_mean_relative_error": 0.512168049221865,
+      "random_eval_loss": 10.500370979309082,
+      "platonic_mean_eval_loss": 10.509027481079102,
+      "platonic_sampled_eval_loss": 10.498961448669434,
+      "delta_sampled_vs_random": -0.0014095306396484375
+    },
+    {
+      "basis": "rbf",
+      "fit_mean_relative_error": 0.22252679615890467,
+      "random_eval_loss": 10.500370979309082,
+      "platonic_mean_eval_loss": 10.509027481079102,
+      "platonic_sampled_eval_loss": 10.497274398803711,
+      "delta_sampled_vs_random": -0.0030965805053710938
+    },
+    {
+      "basis": "poly_exp",
+      "fit_mean_relative_error": 0.20011031805404447,
+      "random_eval_loss": 10.500370979309082,
+      "platonic_mean_eval_loss": 10.509027481079102,
+      "platonic_sampled_eval_loss": 10.499662399291992,
+      "delta_sampled_vs_random": -0.0007085800170898438
+    }
+  ]
+}

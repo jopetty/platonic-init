@@ -1,0 +1,324 @@
+{
+  "num_tensors": 28,
+  "total_params_analyzed": 2212,
+  "tensors": {
+    "transformer.h.0.attn.c_attn.bias": {
+      "shape": [
+        6
+      ],
+      "numel": 6,
+      "explained_variance_ratio": [
+        0.5294767618179321,
+        0.41271764039993286,
+        0.04551625996828079,
+        0.012289397418498993
+      ]
+    },
+    "transformer.h.0.attn.c_attn.weight": {
+      "shape": [
+        2,
+        6
+      ],
+      "numel": 12,
+      "explained_variance_ratio": [
+        0.40520167350769043,
+        0.2226104885339737,
+        0.17724640667438507,
+        0.07348420470952988
+      ]
+    },
+    "transformer.h.0.attn.c_proj.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.9999377727508545,
+        6.2279257690534e-05
+      ]
+    },
+    "transformer.h.0.attn.c_proj.weight": {
+      "shape": [
+        2,
+        2
+      ],
+      "numel": 4,
+      "explained_variance_ratio": [
+        0.6274111866950989,
+        0.24530966579914093,
+        0.08890452980995178,
+        0.038374628871679306
+      ]
+    },
+    "transformer.h.0.ln_1.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.6336014270782471,
+        0.36639854311943054
+      ]
+    },
+    "transformer.h.0.ln_1.weight": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.6216940879821777,
+        0.3783058524131775
+      ]
+    },
+    "transformer.h.0.ln_2.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.872207522392273,
+        0.12779249250888824
+      ]
+    },
+    "transformer.h.0.ln_2.weight": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.7395913004875183,
+        0.2604086995124817
+      ]
+    },
+    "transformer.h.0.mlp.c_fc.bias": {
+      "shape": [
+        8
+      ],
+      "numel": 8,
+      "explained_variance_ratio": [
+        0.751550018787384,
+        0.13039931654930115,
+        0.06799934804439545,
+        0.03704399988055229
+      ]
+    },
+    "transformer.h.0.mlp.c_fc.weight": {
+      "shape": [
+        2,
+        8
+      ],
+      "numel": 16,
+      "explained_variance_ratio": [
+        0.4686981737613678,
+        0.18514016270637512,
+        0.16767412424087524,
+        0.12298554927110672
+      ]
+    },
+    "transformer.h.0.mlp.c_proj.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.9999752640724182,
+        2.4705726900720038e-05
+      ]
+    },
+    "transformer.h.0.mlp.c_proj.weight": {
+      "shape": [
+        8,
+        2
+      ],
+      "numel": 16,
+      "explained_variance_ratio": [
+        0.3348355293273926,
+        0.20493704080581665,
+        0.15614674985408783,
+        0.13870736956596375
+      ]
+    },
+    "transformer.h.1.attn.c_attn.bias": {
+      "shape": [
+        6
+      ],
+      "numel": 6,
+      "explained_variance_ratio": [
+        0.6456688642501831,
+        0.2712189853191376,
+        0.057844262570142746,
+        0.025267887860536575
+      ]
+    },
+    "transformer.h.1.attn.c_attn.weight": {
+      "shape": [
+        2,
+        6
+      ],
+      "numel": 12,
+      "explained_variance_ratio": [
+        0.4244123697280884,
+        0.253935843706131,
+        0.14618681371212006,
+        0.07277996838092804
+      ]
+    },
+    "transformer.h.1.attn.c_proj.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.9999133348464966,
+        8.666948997415602e-05
+      ]
+    },
+    "transformer.h.1.attn.c_proj.weight": {
+      "shape": [
+        2,
+        2
+      ],
+      "numel": 4,
+      "explained_variance_ratio": [
+        0.47918468713760376,
+        0.4263172447681427,
+        0.083472840487957,
+        0.011025180108845234
+      ]
+    },
+    "transformer.h.1.ln_1.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.7509731650352478,
+        0.2490268051624298
+      ]
+    },
+    "transformer.h.1.ln_1.weight": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.6774938106536865,
+        0.32250621914863586
+      ]
+    },
+    "transformer.h.1.ln_2.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.8361150622367859,
+        0.1638849377632141
+      ]
+    },
+    "transformer.h.1.ln_2.weight": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.9776756763458252,
+        0.022324346005916595
+      ]
+    },
+    "transformer.h.1.mlp.c_fc.bias": {
+      "shape": [
+        8
+      ],
+      "numel": 8,
+      "explained_variance_ratio": [
+        0.5860469937324524,
+        0.25717487931251526,
+        0.13074570894241333,
+        0.013623839244246483
+      ]
+    },
+    "transformer.h.1.mlp.c_fc.weight": {
+      "shape": [
+        2,
+        8
+      ],
+      "numel": 16,
+      "explained_variance_ratio": [
+        0.31559744477272034,
+        0.2858477234840393,
+        0.1487453579902649,
+        0.10813639312982559
+      ]
+    },
+    "transformer.h.1.mlp.c_proj.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.9999719858169556,
+        2.7964248147327453e-05
+      ]
+    },
+    "transformer.h.1.mlp.c_proj.weight": {
+      "shape": [
+        8,
+        2
+      ],
+      "numel": 16,
+      "explained_variance_ratio": [
+        0.35698452591896057,
+        0.1748497188091278,
+        0.16211208701133728,
+        0.12678545713424683
+      ]
+    },
+    "transformer.ln_f.bias": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.9665738940238953,
+        0.033426057547330856
+      ]
+    },
+    "transformer.ln_f.weight": {
+      "shape": [
+        2
+      ],
+      "numel": 2,
+      "explained_variance_ratio": [
+        0.8746789693832397,
+        0.12532104551792145
+      ]
+    },
+    "transformer.wpe.weight": {
+      "shape": [
+        1024,
+        2
+      ],
+      "numel": 2048,
+      "explained_variance_ratio": [
+        0.15716132521629333,
+        0.1499348133802414,
+        0.14438991248607635,
+        0.1431414783000946
+      ]
+    },
+    "transformer.wte.weight": {
+      "shape": [
+        6,
+        2
+      ],
+      "numel": 12,
+      "explained_variance_ratio": [
+        0.7565319538116455,
+        0.1154174730181694,
+        0.04588376358151436,
+        0.03812886402010918
+      ]
+    }
+  }
+}

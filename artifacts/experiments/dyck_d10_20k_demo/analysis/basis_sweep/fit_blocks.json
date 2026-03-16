@@ -1,0 +1,6 @@
+{
+  "chebyshev_d128": {
+    "slug": "chebyshev_d128",
+    "basis_type": "chebyshev"
+  }
+}

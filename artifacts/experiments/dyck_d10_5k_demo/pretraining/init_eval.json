@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "variant": "random",
+      "train_loss": 10.49734043121338,
+      "initial_eval_loss": 10.576050758361816,
+      "best_eval_loss": 10.500370979309082,
+      "final_eval_loss": 10.500370979309082,
+      "eval_loss": 10.500370979309082
+    },
+    {
+      "variant": "platonic_mean",
+      "train_loss": 10.514835662841797,
+      "initial_eval_loss": 10.578263282775879,
+      "best_eval_loss": 10.518792152404785,
+      "final_eval_loss": 10.518792152404785,
+      "eval_loss": 10.518792152404785
+    },
+    {
+      "variant": "platonic_sampled",
+      "train_loss": 10.509289703369141,
+      "initial_eval_loss": 10.581212997436523,
+      "best_eval_loss": 10.512815475463867,
+      "final_eval_loss": 10.512815475463867,
+      "eval_loss": 10.512815475463867
+    }
+  ]
+}
