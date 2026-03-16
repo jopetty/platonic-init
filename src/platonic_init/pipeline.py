@@ -141,6 +141,48 @@ def merge_results_by_label(existing: list[dict[str, object]], updated: list[dict
     return [by_label[label] for label in ordered_labels]
 
 
+def write_pretraining_summaries(
+    *,
+    pretraining_artifacts: Path,
+    args: argparse.Namespace,
+    jobs: list[PretrainJob],
+    results: list[dict[str, object]],
+) -> None:
+    """Persist downstream pretraining summaries so partial progress is syncable."""
+
+    init_eval_path = pretraining_artifacts / "init_eval.json"
+    merged_results = results
+    if init_eval_path.exists():
+        try:
+            payload = json.loads(init_eval_path.read_text(encoding="utf-8"))
+            existing_results = payload.get("results", [])
+            if isinstance(existing_results, list):
+                merged_results = merge_results_by_label(existing_results, results)
+        except Exception:
+            pass
+    init_eval_path.write_text(json.dumps({"results": merged_results}, indent=2), encoding="utf-8")
+
+    curves_payload = {
+        "config": args.config,
+        "fit_names": [job.label for job in jobs if job.analytic_subspace is not None],
+        "init_mode": args.init_mode,
+        "train_steps": args.eval_steps,
+        "eval_every": args.eval_every,
+        "seed": args.seed,
+        "results": merged_results,
+    }
+    curves_out = pretraining_artifacts / "init_eval_basis_curves.json"
+    if curves_out.exists():
+        try:
+            payload = json.loads(curves_out.read_text(encoding="utf-8"))
+            existing_results = payload.get("results", [])
+            if isinstance(existing_results, list):
+                curves_payload["results"] = merge_results_by_label(existing_results, results)
+        except Exception:
+            pass
+    curves_out.write_text(json.dumps(curves_payload, indent=2), encoding="utf-8")
+
+
 def default_checkpoint_dirs(cfg: ExperimentConfig) -> list[Path]:
     """Return expected seed checkpoint directories for the configured sweep."""
 
@@ -481,41 +523,15 @@ def pretrain_stage(
         result["basis"] = job.label if job.analytic_subspace is not None else None
         result["init_mode"] = job.init_mode
         results.append(result)
+        write_pretraining_summaries(
+            pretraining_artifacts=pretraining_artifacts,
+            args=args,
+            jobs=jobs,
+            results=results,
+        )
         top_bar.update(1)
     top_bar.set_description(f"pretraining {len(jobs)}/{len(jobs)} | done")
     top_bar.close()
-
-    init_eval_path = pretraining_artifacts / "init_eval.json"
-    merged_results = results
-    if init_eval_path.exists():
-        try:
-            payload = json.loads(init_eval_path.read_text(encoding="utf-8"))
-            existing_results = payload.get("results", [])
-            if isinstance(existing_results, list):
-                merged_results = merge_results_by_label(existing_results, results)
-        except Exception:
-            pass
-    init_eval_path.write_text(json.dumps({"results": merged_results}, indent=2), encoding="utf-8")
-
-    curves_payload = {
-        "config": args.config,
-        "fit_names": [job.label for job in jobs if job.analytic_subspace is not None],
-        "init_mode": args.init_mode,
-        "train_steps": args.eval_steps,
-        "eval_every": args.eval_every,
-        "seed": args.seed,
-        "results": merged_results,
-    }
-    curves_out = pretraining_artifacts / "init_eval_basis_curves.json"
-    if curves_out.exists():
-        try:
-            payload = json.loads(curves_out.read_text(encoding="utf-8"))
-            existing_results = payload.get("results", [])
-            if isinstance(existing_results, list):
-                curves_payload["results"] = merge_results_by_label(existing_results, results)
-        except Exception:
-            pass
-    curves_out.write_text(json.dumps(curves_payload, indent=2), encoding="utf-8")
 
 
 def main() -> None:
