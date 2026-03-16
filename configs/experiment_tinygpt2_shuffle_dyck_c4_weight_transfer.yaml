@@ -38,9 +38,21 @@ stages:
       max_iter: 50
       seed: 0
     fit_blocks:
+      - name: chebyshev_d6
+        basis_type: chebyshev
+        chebyshev_degree: 6
       - name: chebyshev
         basis_type: chebyshev
         chebyshev_degree: 12
+      - name: chebyshev_d24
+        basis_type: chebyshev
+        chebyshev_degree: 24
+      - name: chebyshev_d48
+        basis_type: chebyshev
+        chebyshev_degree: 48
+      - name: chebyshev_d128
+        basis_type: chebyshev
+        chebyshev_degree: 128
   pretrain_eval:
     train_steps: 10000
     eval_every: 100
