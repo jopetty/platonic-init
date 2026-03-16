@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Iterable
 
-from datasets import Dataset, load_dataset, load_from_disk
+from datasets import Dataset, IterableDataset, load_dataset, load_from_disk
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from .config import InitEvalDataConfig
@@ -175,7 +175,7 @@ def dataset_cache_key(*parts: object) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def tokenize_for_clm(ds: Dataset, tokenizer, block_size: int) -> Dataset:
+def tokenize_for_clm(ds: Dataset | IterableDataset, tokenizer, block_size: int) -> Dataset | IterableDataset:
     """Tokenize and group a dataset into fixed-size causal-LM blocks."""
 
     def tokenize_batch(batch):
@@ -200,20 +200,27 @@ def tokenize_for_clm(ds: Dataset, tokenizer, block_size: int) -> Dataset:
             "labels": [chunk[:] for chunk in input_ids],
         }
 
-    grouped = tokenized.map(group_texts, batched=True)
+    grouped = tokenized.map(group_texts, batched=True, remove_columns=tokenized.column_names)
     grouped = grouped.filter(lambda example: len(example["input_ids"]) > 0)
+    column_names = getattr(grouped, "column_names", None)
+    extra_columns = [name for name in column_names or [] if name not in {"input_ids", "attention_mask", "labels"}]
+    if extra_columns:
+        grouped = grouped.remove_columns(extra_columns)
     return grouped
 
 
 def load_or_create_tokenized_dataset(
-    ds: Dataset,
+    ds: Dataset | IterableDataset,
     tokenizer,
     *,
     block_size: int,
     cache_dir: str | Path,
     cache_key: str,
-) -> Dataset:
+) -> Dataset | IterableDataset:
     """Reuse a cached tokenized dataset when possible, otherwise build it."""
+
+    if isinstance(ds, IterableDataset):
+        return tokenize_for_clm(ds, tokenizer, block_size=block_size)
 
     cache_path = Path(cache_dir) / cache_key
     if cache_path.exists():
@@ -247,7 +254,7 @@ def load_init_eval_datasets(
     default_local_path: str,
     eval_ratio: float,
     seed: int,
-) -> tuple[Dataset, Dataset]:
+) -> tuple[Dataset | IterableDataset, Dataset]:
     """Load train/eval datasets for downstream initialization evaluation."""
 
     if cfg.source == "local_text":
@@ -257,10 +264,12 @@ def load_init_eval_datasets(
         train_ds = split["train"]
         eval_ds = split["test"]
     elif cfg.source == "hf":
+        stream_train = cfg.max_train_samples is None
         train_ds = load_dataset(
             cfg.dataset_name,
             cfg.dataset_config_name,
             split=_hf_split_with_limit(cfg.train_split, cfg.max_train_samples),
+            streaming=stream_train,
         )
         if cfg.eval_split:
             eval_ds = load_dataset(
@@ -284,6 +293,7 @@ def load_init_eval_datasets(
     if "text" not in train_ds.column_names or "text" not in eval_ds.column_names:
         raise ValueError("Both train/eval datasets must include a 'text' column")
 
-    train_ds = _limit_dataset(train_ds, cfg.max_train_samples, seed=seed)
+    if not isinstance(train_ds, IterableDataset):
+        train_ds = _limit_dataset(train_ds, cfg.max_train_samples, seed=seed)
     eval_ds = _limit_dataset(eval_ds, cfg.max_eval_samples, seed=seed + 1)
     return train_ds, eval_ds
