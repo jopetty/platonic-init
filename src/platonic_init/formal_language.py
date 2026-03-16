@@ -29,10 +29,16 @@ def sample_depth(max_depth: int, alpha: float, rng: random.Random) -> int:
     return rng.choices(depths, weights=weights, k=1)[0]
 
 
-def infer_dataset_stem(language: str, n_samples: int, *, k: int | None = None, max_depth: int | None = None) -> str:
+def infer_dataset_stem(
+    language: str, n_samples: int, *, k: int | None = None, max_depth: int | None = None
+) -> str:
     """Build a predictable dataset filename stem for generated corpora."""
 
-    sample_suffix = f"{int(round(n_samples / 1000))}k" if math.isclose(n_samples / 1000, round(n_samples / 1000)) else str(n_samples)
+    sample_suffix = (
+        f"{int(round(n_samples / 1000))}k"
+        if math.isclose(n_samples / 1000, round(n_samples / 1000))
+        else str(n_samples)
+    )
     parts = [language]
     if k is not None:
         parts.append(f"k{k}")
@@ -82,7 +88,11 @@ def generate_k_dyck_exact_depth(
             if must_close:
                 action = "close"
             elif can_open and can_close:
-                action = "open" if rng.random() < (0.6 if cur_depth < depth - 1 else 0.3) else "close"
+                action = (
+                    "open"
+                    if rng.random() < (0.6 if cur_depth < depth - 1 else 0.3)
+                    else "close"
+                )
             elif can_open:
                 action = "open"
             elif can_close:
@@ -106,7 +116,12 @@ def generate_k_dyck_exact_depth(
             if cur_depth < 0:
                 break
 
-        if len(out) == total_len and opens == closes == n_pairs and max_seen == depth and not stack:
+        if (
+            len(out) == total_len
+            and opens == closes == n_pairs
+            and max_seen == depth
+            and not stack
+        ):
             return out
 
     # Deterministic fallback preserves exact depth.
@@ -121,25 +136,26 @@ def generate_shuffle_dyck(
     *,
     k: int = 2,
 ) -> list[str]:
-    """Generate a k-Shuffle Dyck sequence by interleaving k independent 1-Dyck strings."""
+    """Generate a k-Shuffle Dyck sequence from interleaved 1-Dyck strings."""
 
     if k < 2:
         raise ValueError("shuffle_dyck requires k >= 2")
 
-    components = [
-        generate_k_dyck_exact_depth(depth, rng, k=1)
-        for _ in range(k)
-    ]
+    components = [generate_k_dyck_exact_depth(depth, rng, k=1) for _ in range(k)]
     renamed_components: list[list[str]] = []
     for index, component in enumerate(components):
         open_tok, close_tok = _pair_tokens(k)[index]
-        renamed_components.append([open_tok if token == "<0>" else close_tok for token in component])
+        renamed_components.append(
+            [open_tok if token == "<0>" else close_tok for token in component]
+        )
 
     # Interleave while preserving each component's local order.
     cursors = [0] * k
     out: list[str] = []
     while True:
-        active = [i for i, cursor in enumerate(cursors) if cursor < len(renamed_components[i])]
+        active = [
+            i for i, cursor in enumerate(cursors) if cursor < len(renamed_components[i])
+        ]
         if not active:
             break
         chosen = active[rng.randrange(len(active))]
@@ -148,7 +164,13 @@ def generate_shuffle_dyck(
     return out
 
 
-def generate_ww(rng: random.Random, *, alphabet_size: int = 16, min_half_length: int = 8, max_half_length: int = 64) -> list[str]:
+def generate_ww(
+    rng: random.Random,
+    *,
+    alphabet_size: int = 16,
+    min_half_length: int = 8,
+    max_half_length: int = 64,
+) -> list[str]:
     """Generate a `ww` copy-language example over a finite token alphabet."""
 
     if alphabet_size <= 0:
@@ -213,8 +235,12 @@ def generate_formal_language_lines(
 def is_valid_k_dyck(tokens: Sequence[str], *, k: int) -> bool:
     """Return whether a token sequence belongs to the k-Dyck language."""
 
-    pair_lookup = {open_tok: idx for idx, (open_tok, _close_tok) in enumerate(_pair_tokens(k))}
-    close_lookup = {close_tok: idx for idx, (_open_tok, close_tok) in enumerate(_pair_tokens(k))}
+    pair_lookup = {
+        open_tok: idx for idx, (open_tok, _close_tok) in enumerate(_pair_tokens(k))
+    }
+    close_lookup = {
+        close_tok: idx for idx, (_open_tok, close_tok) in enumerate(_pair_tokens(k))
+    }
     stack: list[int] = []
     for token in tokens:
         if token in pair_lookup:
@@ -228,7 +254,7 @@ def is_valid_k_dyck(tokens: Sequence[str], *, k: int) -> bool:
 
 
 def is_valid_shuffle_dyck(tokens: Sequence[str], *, k: int) -> bool:
-    """Return whether a token sequence belongs to the implemented shuffle-Dyck family."""
+    """Return whether a token sequence belongs to the shuffle-Dyck family."""
 
     if k < 2:
         return False

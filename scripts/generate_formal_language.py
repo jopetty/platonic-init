@@ -4,12 +4,19 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from platonic_init.formal_language import generate_formal_language_lines, infer_dataset_stem
+from platonic_init.formal_language import (
+    generate_formal_language_lines,
+    infer_dataset_stem,
+)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate formal-language synthetic data for pre-pretraining")
-    parser.add_argument("--language", type=str, choices=["dyck", "shuffle_dyck", "ww"], required=True)
+    parser = argparse.ArgumentParser(
+        description="Generate formal-language synthetic data for pre-pretraining"
+    )
+    parser.add_argument(
+        "--language", type=str, choices=["dyck", "shuffle_dyck", "ww"], required=True
+    )
     parser.add_argument("--n-samples", type=int, default=5000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output", type=str, default=None)
@@ -22,7 +29,9 @@ def main() -> None:
     parser.add_argument(
         "--compact-single-dyck",
         action="store_true",
-        help="Render 1-Dyck using raw parentheses for compatibility with the old script",
+        help=(
+            "Render 1-Dyck using raw parentheses for compatibility with the old script"
+        ),
     )
     args = parser.parse_args()
 

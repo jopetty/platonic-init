@@ -120,8 +120,12 @@ class PretrainEvalStageConfig:
 @dataclass
 class StagesConfig:
     prepretrain: PrepretrainStageConfig = field(default_factory=PrepretrainStageConfig)
-    fit_initializations: FitInitializationsStageConfig = field(default_factory=FitInitializationsStageConfig)
-    pretrain_eval: PretrainEvalStageConfig = field(default_factory=PretrainEvalStageConfig)
+    fit_initializations: FitInitializationsStageConfig = field(
+        default_factory=FitInitializationsStageConfig
+    )
+    pretrain_eval: PretrainEvalStageConfig = field(
+        default_factory=PretrainEvalStageConfig
+    )
 
 
 @dataclass
@@ -189,7 +193,9 @@ def save_config(config: ExperimentConfig, path: str | Path) -> None:
         yaml.safe_dump(asdict(config), f)
 
 
-def _normalize_fit_blocks(items: list[Any], *, prefix: str = "fit") -> list[AnalyticFitBlockConfig]:
+def _normalize_fit_blocks(
+    items: list[Any], *, prefix: str = "fit"
+) -> list[AnalyticFitBlockConfig]:
     """Normalize fit-block entries into `AnalyticFitBlockConfig` objects."""
 
     normalized_blocks: list[AnalyticFitBlockConfig] = []
@@ -210,5 +216,7 @@ def _normalize_fit_blocks(items: list[Any], *, prefix: str = "fit") -> list[Anal
 def _normalize_config(cfg: ExperimentConfig) -> ExperimentConfig:
     """Apply post-load config normalization rules."""
 
-    cfg.stages.fit_initializations.fit_blocks = _normalize_fit_blocks(cfg.stages.fit_initializations.fit_blocks)
+    cfg.stages.fit_initializations.fit_blocks = _normalize_fit_blocks(
+        cfg.stages.fit_initializations.fit_blocks
+    )
     return cfg

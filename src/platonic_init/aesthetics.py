@@ -137,7 +137,7 @@ def _to_rgb_tuple(color: ColorLike) -> Color:
 def _darken_color(color: ColorLike, by: float) -> Color:
     by = min(max(float(by), 0.0), 1.0)
     rgb = _to_rgb_tuple(color)
-    h, l, s = colorsys.rgb_to_hls(*rgb)
+    h, l, s = colorsys.rgb_to_hls(*rgb)  # noqa: E741
     darker = colorsys.hls_to_rgb(h, l * (1.0 - by), s)
     return (float(darker[0]), float(darker[1]), float(darker[2]))
 

@@ -18,7 +18,7 @@ import torch
 from safetensors.torch import load_file as safe_load_file
 from tqdm import tqdm
 
-from .config import AnalyticFitConfig, AnalysisConfig
+from .config import AnalysisConfig, AnalyticFitConfig
 
 
 def load_state_dict(model_dir: Path) -> dict[str, torch.Tensor]:
@@ -78,17 +78,27 @@ def stack_tensor_values(
     for state in states:
         tensor = state[key].detach().to(dtype=torch.float32, device="cpu")
         if tuple(tensor.shape) != shape:
-            raise ValueError(f"Shape mismatch for tensor {key}: expected {shape}, got {tuple(tensor.shape)}")
+            raise ValueError(
+                f"Shape mismatch for tensor {key}: "
+                f"expected {shape}, got {tuple(tensor.shape)}"
+            )
         flattened.append(tensor.reshape(-1))
 
     matrix = torch.stack(flattened, dim=0)
-    if analysis_cfg.max_params_per_tensor is not None and matrix.shape[1] > analysis_cfg.max_params_per_tensor:
-        idx = torch.linspace(0, matrix.shape[1] - 1, steps=analysis_cfg.max_params_per_tensor).long()
+    if (
+        analysis_cfg.max_params_per_tensor is not None
+        and matrix.shape[1] > analysis_cfg.max_params_per_tensor
+    ):
+        idx = torch.linspace(
+            0, matrix.shape[1] - 1, steps=analysis_cfg.max_params_per_tensor
+        ).long()
         matrix = matrix[:, idx]
     return matrix.to(dtype=dtype), shape
 
 
-def tensorwise_pca(states: list[dict[str, torch.Tensor]], cfg: AnalysisConfig) -> dict[str, Any]:
+def tensorwise_pca(
+    states: list[dict[str, torch.Tensor]], cfg: AnalysisConfig
+) -> dict[str, Any]:
     """Estimate a shared low-rank subspace for each tensor across checkpoints."""
 
     if len(states) < 2:
@@ -141,7 +151,9 @@ def build_summary(stats: dict[str, Any]) -> dict[str, Any]:
         summary["tensors"][key] = {
             "shape": list(entry["shape"]),
             "numel": entry["numel"],
-            "explained_variance_ratio": [float(x) for x in entry["explained_variance_ratio"].cpu().tolist()],
+            "explained_variance_ratio": [
+                float(x) for x in entry["explained_variance_ratio"].cpu().tolist()
+            ],
         }
     return summary
 
@@ -329,14 +341,18 @@ def fit_analytic_subspace(
             "mean": mean,
             "basis_type": cfg.basis_type,
             "basis_params": basis_params(cfg),
-            "basis_dim": int(build_basis_numpy(n, cfg.basis_type, **basis_params(cfg)).shape[1]),
+            "basis_dim": int(
+                build_basis_numpy(n, cfg.basis_type, **basis_params(cfg)).shape[1]
+            ),
             "component_coeffs": component_coeffs,
             "explained_variance": entry["explained_variance"],
             "explained_variance_ratio": entry["explained_variance_ratio"],
         }
         report["tensors"][key] = {
             "component_relative_errors": component_errors,
-            "mean_component_relative_error": float(np.mean(component_errors)) if component_errors else 0.0,
+            "mean_component_relative_error": float(np.mean(component_errors))
+            if component_errors
+            else 0.0,
         }
 
     report["mean_relative_error"] = float(np.mean(all_errors)) if all_errors else 0.0
@@ -380,7 +396,9 @@ def build_platonic_state_dict(
         if entry_basis_params is None:
             entry_basis_params = {
                 "poly_degree": int(entry.get("poly_degree", 5)),
-                "exp_scales": [float(x) for x in entry.get("exp_scales", [0.5, 1.0, 2.0, 4.0])],
+                "exp_scales": [
+                    float(x) for x in entry.get("exp_scales", [0.5, 1.0, 2.0, 4.0])
+                ],
             }
         coeffs = entry["component_coeffs"]
 
@@ -388,9 +406,14 @@ def build_platonic_state_dict(
         if latent is not None and key in latent and len(coeffs) > 0:
             z = latent[key].to(torch.float32) * float(latent_scale)
             if z.numel() != len(coeffs):
-                raise ValueError(f"Latent dim mismatch for {key}: got {z.numel()} expected {len(coeffs)}")
+                raise ValueError(
+                    f"Latent dim mismatch for {key}: "
+                    f"got {z.numel()} expected {len(coeffs)}"
+                )
             for index, coeff in enumerate(coeffs):
-                component = reconstruct_component(len(vec), coeff, entry["basis_type"], entry_basis_params)
+                component = reconstruct_component(
+                    len(vec), coeff, entry["basis_type"], entry_basis_params
+                )
                 vec = vec + z[index] * component
 
         if int(np.prod(entry["shape"])) != target.numel():
@@ -400,7 +423,9 @@ def build_platonic_state_dict(
     return out
 
 
-def sample_latent(analytic_subspace: dict[str, Any], seed: int = 0) -> dict[str, torch.Tensor]:
+def sample_latent(
+    analytic_subspace: dict[str, Any], seed: int = 0
+) -> dict[str, torch.Tensor]:
     """Sample latent coordinates using the stored explained variances."""
 
     rng = np.random.default_rng(seed)
@@ -413,7 +438,9 @@ def sample_latent(analytic_subspace: dict[str, Any], seed: int = 0) -> dict[str,
         if explained_variance is None:
             std = np.ones(k, dtype=np.float32)
         else:
-            std = np.sqrt(torch.as_tensor(explained_variance).cpu().numpy()[:k]).astype(np.float32)
+            std = np.sqrt(torch.as_tensor(explained_variance).cpu().numpy()[:k]).astype(
+                np.float32
+            )
         latent[key] = torch.from_numpy(rng.normal(0.0, std, size=k).astype(np.float32))
     return latent
 
@@ -426,6 +453,8 @@ def apply_platonic_init(
 ) -> torch.nn.Module:
     """Apply a platonic initialization directly to a live model."""
 
-    new_state = build_platonic_state_dict(model.state_dict(), analytic_subspace, latent=latent, latent_scale=latent_scale)
+    new_state = build_platonic_state_dict(
+        model.state_dict(), analytic_subspace, latent=latent, latent_scale=latent_scale
+    )
     model.load_state_dict(new_state, strict=False)
     return model

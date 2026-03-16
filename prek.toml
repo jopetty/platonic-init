@@ -1,0 +1,57 @@
+# Configuration file for `prek`, a git hook framework written in Rust.
+# See https://prek.j178.dev for more information.
+#:schema https://www.schemastore.org/prek.json
+
+exclude = "^(artifacts/|data/|logs/|output/|research_notes/|runs/|wandb/)"
+
+[[repos]]
+repo = "https://github.com/pre-commit/pre-commit-hooks"
+rev = "v5.0.0"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-yaml" },
+  { id = "check-added-large-files", args = ["--maxkb=2000"] },
+  { id = "no-commit-to-branch", args = ["--branch", "main"], stages = ["pre-commit"] },
+  { id = "debug-statements" },
+  { id = "detect-private-key" },
+]
+
+[[repos]]
+repo = "https://github.com/kynan/nbstripout"
+rev = "0.7.1"
+hooks = [
+  { id = "nbstripout" },
+]
+
+[[repos]]
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.7.0"
+hooks = [
+  {
+    id = "ruff",
+    args = ["--fix", "--exit-non-zero-on-fix"],
+    types_or = ["python", "pyi", "jupyter"],
+  },
+  { id = "ruff-format" },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "ty",
+    name = "ty",
+    entry = "uv run ty check",
+    language = "system",
+    pass_filenames = false,
+    types_or = ["python", "pyi"],
+  },
+]
+
+[[repos]]
+repo = "https://github.com/pre-commit/mirrors-prettier"
+rev = "v4.0.0-alpha.8"
+hooks = [
+  { id = "prettier", types = ["yaml"] },
+]

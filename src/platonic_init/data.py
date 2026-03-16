@@ -12,7 +12,6 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from .config import InitEvalDataConfig
 
-
 TEXT_FIELD = "text"
 
 _PAD_TOKEN = "<pad>"
@@ -87,11 +86,19 @@ class CharTokenizer(PreTrainedTokenizer):
 
         return self.ids_to_tokens.get(index, self.unk_token)
 
-    def build_inputs_with_special_tokens(self, token_ids_0: list[int], token_ids_1: list[int] | None = None):
+    def build_inputs_with_special_tokens(
+        self, token_ids_0: list[int], token_ids_1: list[int] | None = None
+    ):
         """Wrap one or two token sequences with BOS/EOS markers."""
 
         if token_ids_1 is not None:
-            return [self.bos_token_id] + token_ids_0 + [self.eos_token_id] + token_ids_1 + [self.eos_token_id]
+            return (
+                [self.bos_token_id]
+                + token_ids_0
+                + [self.eos_token_id]
+                + token_ids_1
+                + [self.eos_token_id]
+            )
         return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
 
     def create_token_type_ids_from_sequences(
@@ -103,12 +110,18 @@ class CharTokenizer(PreTrainedTokenizer):
             return [0] * (len(token_ids_0) + len(token_ids_1) + 3)
         return [0] * (len(token_ids_0) + 2)
 
-    def save_vocabulary(self, save_directory: str, filename_prefix: str | None = None) -> tuple[str]:
+    def save_vocabulary(
+        self, save_directory: str, filename_prefix: str | None = None
+    ) -> tuple[str]:
         """Persist the character vocabulary in the same layout HF expects."""
 
         path = Path(save_directory)
         path.mkdir(parents=True, exist_ok=True)
-        name = "char_vocab.json" if filename_prefix is None else f"{filename_prefix}-char_vocab.json"
+        name = (
+            "char_vocab.json"
+            if filename_prefix is None
+            else f"{filename_prefix}-char_vocab.json"
+        )
         out_path = path / name
         out_path.write_text(json.dumps(self.vocab, indent=2), encoding="utf-8")
         return (str(out_path),)
@@ -157,7 +170,9 @@ def tokenizer_cache_key(tokenizer) -> str:
     else:
         payload = json.dumps(
             {
-                "name_or_path": getattr(tokenizer, "name_or_path", type(tokenizer).__name__),
+                "name_or_path": getattr(
+                    tokenizer, "name_or_path", type(tokenizer).__name__
+                ),
                 "vocab_size": len(tokenizer),
                 "bos": tokenizer.bos_token_id,
                 "eos": tokenizer.eos_token_id,
@@ -175,7 +190,9 @@ def dataset_cache_key(*parts: object) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def tokenize_for_clm(ds: Dataset | IterableDataset, tokenizer, block_size: int) -> Dataset | IterableDataset:
+def tokenize_for_clm(
+    ds: Dataset | IterableDataset, tokenizer, block_size: int
+) -> Dataset | IterableDataset:
     """Tokenize and group a dataset into fixed-size causal-LM blocks."""
 
     def tokenize_batch(batch):
@@ -200,10 +217,16 @@ def tokenize_for_clm(ds: Dataset | IterableDataset, tokenizer, block_size: int) 
             "labels": [chunk[:] for chunk in input_ids],
         }
 
-    grouped = tokenized.map(group_texts, batched=True, remove_columns=tokenized.column_names)
+    grouped = tokenized.map(
+        group_texts, batched=True, remove_columns=tokenized.column_names
+    )
     grouped = grouped.filter(lambda example: len(example["input_ids"]) > 0)
     column_names = getattr(grouped, "column_names", None)
-    extra_columns = [name for name in column_names or [] if name not in {"input_ids", "attention_mask", "labels"}]
+    extra_columns = [
+        name
+        for name in column_names or []
+        if name not in {"input_ids", "attention_mask", "labels"}
+    ]
     if extra_columns:
         grouped = grouped.remove_columns(extra_columns)
     return grouped
@@ -286,7 +309,9 @@ def load_init_eval_datasets(
 
     if cfg.text_field != "text":
         if cfg.text_field not in train_ds.column_names:
-            raise ValueError(f"Text field '{cfg.text_field}' not found in train dataset")
+            raise ValueError(
+                f"Text field '{cfg.text_field}' not found in train dataset"
+            )
         train_ds = train_ds.rename_column(cfg.text_field, "text")
         if cfg.text_field in eval_ds.column_names:
             eval_ds = eval_ds.rename_column(cfg.text_field, "text")
