@@ -212,3 +212,5 @@ research_notes/
 wandb/
 artifacts/
 configs/tmp/
+logs/*
+!logs/.gitkeep
