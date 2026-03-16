@@ -7,6 +7,7 @@ and evaluation runs so the experiment lifecycle can be read in one place.
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import os
 import platform
 import warnings
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from datasets import Dataset
+from datasets import Dataset, IterableDataset
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, TrainerCallback, set_seed
 from trl import SFTConfig, SFTTrainer
@@ -46,7 +47,7 @@ def resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
     if importlib.util.find_spec("flash_attn") is None:
         return None
     try:
-        import flash_attn_2_cuda  # noqa: F401
+        importlib.import_module("flash_attn_2_cuda")
     except Exception as exc:
         warnings.warn(
             "Flash Attention 2 requested but unavailable in this runtime; "
@@ -439,7 +440,7 @@ def run_variant(
     variant: str,
     model_name_or_path: str,
     tokenizer,
-    train_ds: Dataset,
+    train_ds: Dataset | IterableDataset,
     eval_ds: Dataset,
     out_dir: Path,
     train_steps: int,

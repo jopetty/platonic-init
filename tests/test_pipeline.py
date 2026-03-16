@@ -4,6 +4,7 @@ import argparse
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 from datasets import Dataset
 
@@ -223,7 +224,10 @@ class PipelineResultMergeTests(unittest.TestCase):
         updated = [
             {"label": "weight_transfer", "final_eval_loss": 6.5},
         ]
-        merged = _merge_results_by_label(existing, updated)
+        merged = _merge_results_by_label(
+            cast(list[dict[str, object]], existing),
+            cast(list[dict[str, object]], updated),
+        )
         self.assertEqual(
             [x["label"] for x in merged], ["random", "chebyshev", "weight_transfer"]
         )

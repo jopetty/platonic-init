@@ -5,10 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, cast, overload
 
-from datasets import Dataset, IterableDataset, load_dataset, load_from_disk
-from transformers import AutoTokenizer, PreTrainedTokenizer
+from datasets import Dataset, DatasetDict, IterableDataset, load_dataset, load_from_disk
+from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerBase
 
 from .config import InitEvalDataConfig
 
@@ -33,10 +33,13 @@ def load_text_dataset(data_path: str) -> Dataset:
     return ds
 
 
-def build_tokenizer(model_name_or_path: str):
+def build_tokenizer(model_name_or_path: str) -> PreTrainedTokenizerBase:
     """Load a pretrained tokenizer and ensure it has a pad token."""
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
+    tokenizer = cast(
+        PreTrainedTokenizerBase,
+        AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True),
+    )
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": _REFERENCE_PAD_TOKEN})
     return tokenizer
@@ -71,7 +74,7 @@ class CharTokenizer(PreTrainedTokenizer):
 
         return dict(self.vocab)
 
-    def _tokenize(self, text: str) -> list[str]:
+    def _tokenize(self, text: str, **kwargs) -> list[str]:
         """Tokenize by splitting the input into characters."""
 
         return list(text)
@@ -151,7 +154,7 @@ def build_char_tokenizer_from_text(text_path: str | Path) -> CharTokenizer:
     return CharTokenizer(vocab=vocab)
 
 
-def load_saved_tokenizer(path: str | Path):
+def load_saved_tokenizer(path: str | Path) -> PreTrainedTokenizerBase:
     """Load either a saved char tokenizer or a standard pretrained tokenizer."""
 
     p = Path(path)
@@ -190,8 +193,22 @@ def dataset_cache_key(*parts: object) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+@overload
 def tokenize_for_clm(
-    ds: Dataset | IterableDataset, tokenizer, block_size: int
+    ds: Dataset, tokenizer: PreTrainedTokenizerBase, block_size: int
+) -> Dataset: ...
+
+
+@overload
+def tokenize_for_clm(
+    ds: IterableDataset, tokenizer: PreTrainedTokenizerBase, block_size: int
+) -> IterableDataset: ...
+
+
+def tokenize_for_clm(
+    ds: Dataset | IterableDataset,
+    tokenizer: PreTrainedTokenizerBase,
+    block_size: int,
 ) -> Dataset | IterableDataset:
     """Tokenize and group a dataset into fixed-size causal-LM blocks."""
 
@@ -232,9 +249,31 @@ def tokenize_for_clm(
     return grouped
 
 
+@overload
+def load_or_create_tokenized_dataset(
+    ds: Dataset,
+    tokenizer: PreTrainedTokenizerBase,
+    *,
+    block_size: int,
+    cache_dir: str | Path,
+    cache_key: str,
+) -> Dataset: ...
+
+
+@overload
+def load_or_create_tokenized_dataset(
+    ds: IterableDataset,
+    tokenizer: PreTrainedTokenizerBase,
+    *,
+    block_size: int,
+    cache_dir: str | Path,
+    cache_key: str,
+) -> IterableDataset: ...
+
+
 def load_or_create_tokenized_dataset(
     ds: Dataset | IterableDataset,
-    tokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     *,
     block_size: int,
     cache_dir: str | Path,
@@ -247,11 +286,22 @@ def load_or_create_tokenized_dataset(
 
     cache_path = Path(cache_dir) / cache_key
     if cache_path.exists():
-        return load_from_disk(str(cache_path))
+        loaded = load_from_disk(str(cache_path))
+        if isinstance(loaded, DatasetDict):
+            raise TypeError(
+                f"Expected Dataset cache at {cache_path}, found DatasetDict"
+            )
+        return loaded
     tokenized = tokenize_for_clm(ds, tokenizer, block_size=block_size)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     tokenized.save_to_disk(str(cache_path))
     return tokenized
+
+
+def _dataset_column_names(ds: Dataset | IterableDataset) -> list[str]:
+    """Return dataset column names as a concrete list for type-checkers."""
+
+    return list(ds.column_names or [])
 
 
 def _limit_dataset(ds: Dataset, max_samples: int | None, seed: int) -> Dataset:
@@ -301,21 +351,30 @@ def load_init_eval_datasets(
                 split=_hf_split_with_limit(cfg.eval_split, cfg.max_eval_samples),
             )
         else:
+            if isinstance(train_ds, IterableDataset):
+                raise ValueError(
+                    "Streaming train datasets require an explicit eval_split"
+                )
             split = train_ds.train_test_split(test_size=eval_ratio, seed=seed)
             train_ds = split["train"]
             eval_ds = split["test"]
     else:
         raise ValueError(f"Unsupported init_eval_data.source: {cfg.source}")
 
+    train_column_names = _dataset_column_names(train_ds)
+    eval_column_names = _dataset_column_names(eval_ds)
+
     if cfg.text_field != "text":
-        if cfg.text_field not in train_ds.column_names:
+        if cfg.text_field not in train_column_names:
             raise ValueError(
                 f"Text field '{cfg.text_field}' not found in train dataset"
             )
         train_ds = train_ds.rename_column(cfg.text_field, "text")
-        if cfg.text_field in eval_ds.column_names:
+        if cfg.text_field in eval_column_names:
             eval_ds = eval_ds.rename_column(cfg.text_field, "text")
-    if "text" not in train_ds.column_names or "text" not in eval_ds.column_names:
+    if "text" not in _dataset_column_names(
+        train_ds
+    ) or "text" not in _dataset_column_names(eval_ds):
         raise ValueError("Both train/eval datasets must include a 'text' column")
 
     if not isinstance(train_ds, IterableDataset):
