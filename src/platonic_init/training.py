@@ -391,6 +391,25 @@ def extract_eval_curve(log_history: list[dict[str, Any]]) -> list[dict[str, floa
     return curve
 
 
+def extract_train_curve(log_history: list[dict[str, Any]]) -> list[dict[str, float]]:
+    """Extract train-side metrics such as loss and learning rate from trainer logs."""
+
+    curve: list[dict[str, float]] = []
+    for entry in log_history:
+        if "loss" not in entry or entry["loss"] is None:
+            continue
+        step = entry.get("step")
+        if step is None:
+            continue
+        point: dict[str, float] = {"step": float(step), "loss": float(entry["loss"])}
+        if entry.get("learning_rate") is not None:
+            point["learning_rate"] = float(entry["learning_rate"])
+        if entry.get("grad_norm") is not None:
+            point["grad_norm"] = float(entry["grad_norm"])
+        curve.append(point)
+    return curve
+
+
 def run_variant(
     variant: str,
     model_name_or_path: str,
@@ -411,6 +430,7 @@ def run_variant(
     wandb_project: str | None = None,
     wandb_entity: str | None = None,
     eval_every: int | None = None,
+    logging_steps: int | None = None,
     transfer_model_path: str | None = None,
     transfer_state_dict: dict[str, torch.Tensor] | None = None,
     embedding_transfer_model_path: str | None = None,
@@ -499,7 +519,8 @@ def run_variant(
         report_to=report_to or [],
         run_name=run_name,
         save_strategy="no",
-        logging_strategy="no",
+        logging_strategy="steps",
+        logging_steps=logging_steps or max(1, min(10, train_steps)),
         eval_strategy="steps",
         eval_steps=eval_every or max(10, train_steps // 5),
         seed=seed,
@@ -535,6 +556,7 @@ def run_variant(
     train_result = trainer.train()
     final_metrics = trainer.evaluate()
     eval_curve = extract_eval_curve(trainer.state.log_history)
+    train_curve = extract_train_curve(trainer.state.log_history)
     eval_curve.insert(0, {"step": 0.0, "eval_loss": float(initial_metrics.get("eval_loss", float("nan")))})
     eval_curve.append({"step": float(trainer.state.global_step), "eval_loss": float(final_metrics.get("eval_loss", float("nan")))})
 
@@ -559,6 +581,7 @@ def run_variant(
         "final_eval_loss": float(final_metrics.get("eval_loss", float("nan"))),
         "eval_loss": float(final_metrics.get("eval_loss", float("nan"))),
         "eval_curve": deduped_curve,
+        "train_curve": train_curve,
         "copied_embedding_rows": int(copied_embedding_rows),
     }
     finish_wandb_run(report_to)

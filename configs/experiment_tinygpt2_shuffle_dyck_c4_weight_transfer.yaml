@@ -56,6 +56,7 @@ stages:
   pretrain_eval:
     train_steps: 10000
     eval_every: 100
+    logging_steps: 10
     init_eval_data:
       source: hf
       dataset_name: allenai/c4

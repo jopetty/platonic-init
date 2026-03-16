@@ -463,6 +463,7 @@ def pretrain_stage(
             wandb_project=cfg.training.wandb_project,
             wandb_entity=cfg.training.wandb_entity,
             eval_every=args.eval_every,
+            logging_steps=cfg.stages.pretrain_eval.logging_steps,
             transfer_model_path=job.transfer_model_path,
             transfer_state_dict=job.transfer_state_dict,
             embedding_transfer_model_path=transfer_model_path,

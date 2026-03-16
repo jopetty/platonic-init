@@ -64,6 +64,7 @@ stages:
   pretrain_eval:
     train_steps: 500
     eval_every: 10
+    logging_steps: 10
     init_eval_data:
       source: hf
       dataset_name: wikitext
