@@ -6,8 +6,8 @@ and evaluation runs so the experiment lifecycle can be read in one place.
 
 from __future__ import annotations
 
-import importlib.util
 import importlib
+import importlib.util
 import os
 import platform
 import warnings
