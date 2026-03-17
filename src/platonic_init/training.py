@@ -10,6 +10,7 @@ import importlib
 import importlib.util
 import os
 import platform
+import sys
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,7 +52,11 @@ def resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
     except Exception as exc:
         warnings.warn(
             "Flash Attention 2 requested but unavailable in this runtime; "
-            f"falling back to default attention. Import failed with: {exc!r}",
+            "falling back to default attention. "
+            f"python={sys.version.split()[0]!s}, "
+            f"torch={torch.__version__!s}, "
+            f"torch_cuda={torch.version.cuda!s}, "
+            f"import failed with: {exc!r}",
             stacklevel=2,
         )
         return None
