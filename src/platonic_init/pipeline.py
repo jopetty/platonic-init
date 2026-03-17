@@ -282,6 +282,15 @@ def select_best_prepretraining_seed(cfg: ExperimentConfig) -> int:
     return candidates[0][1]
 
 
+def resolve_reference_init_seed(cfg: ExperimentConfig) -> int:
+    """Return the configured reference seed or auto-select the best PPT seed."""
+
+    configured = cfg.stages.fit_initializations.reference_init_seed
+    if configured is not None:
+        return int(configured)
+    return select_best_prepretraining_seed(cfg)
+
+
 def infer_num_attention_heads(model_dir: Path) -> int | None:
     """Infer GPT-style attention head count from a saved config file."""
 
@@ -423,12 +432,21 @@ def fit_initializations_stage(
 
     merged_state = build_merged_state(states)
     torch.save(merged_state, basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME)
-    reference_tokenizer = load_saved_tokenizer(checkpoints[0])
+    reference_init_seed = resolve_reference_init_seed(cfg)
+    reference_checkpoint = prepretraining_seed_dir(cfg, reference_init_seed)
+    if not reference_checkpoint.exists():
+        raise FileNotFoundError(
+            f"Missing reference checkpoint seed_{reference_init_seed}: "
+            f"{reference_checkpoint}"
+        )
+
+    reference_tokenizer = load_saved_tokenizer(reference_checkpoint)
     reference_state = build_initialized_state_dict(
-        str(checkpoints[0]),
+        str(reference_checkpoint),
         reference_tokenizer,
-        seed=int(cfg.stages.fit_initializations.reference_init_seed),
+        seed=reference_init_seed,
         bf16=cfg.training.bf16,
+        fp16=cfg.training.fp16,
         prefer_flash_attention_2=cfg.training.prefer_flash_attention_2,
     )
 
@@ -440,7 +458,7 @@ def fit_initializations_stage(
             reference_state,
             merged_state,
             fit_cfg,
-            reference_init_seed=int(cfg.stages.fit_initializations.reference_init_seed),
+            reference_init_seed=reference_init_seed,
         )
         slug = fit_block_slug(block.name)
         torch.save(
@@ -454,9 +472,7 @@ def fit_initializations_stage(
         fit_manifest[block.name] = {
             "slug": slug,
             "basis_type": fit_cfg.basis_type,
-            "reference_init_seed": int(
-                cfg.stages.fit_initializations.reference_init_seed
-            ),
+            "reference_init_seed": reference_init_seed,
             "artifact_type": "analytic_delta",
         }
 
@@ -627,6 +643,7 @@ def pretrain_stage(
     transfer_model_path = None
     transfer_projection_assets = None
     transfer_state_dict = None
+    reference_init_seed = resolve_reference_init_seed(cfg)
     selected_transfer_seed: int | None = None
     if not args.skip_transfer:
         selected_transfer_seed = (
@@ -695,7 +712,7 @@ def pretrain_stage(
             learning_rate=cfg.training.learning_rate,
             block_size=cfg.training.block_size,
             seed=args.seed,
-            model_init_seed=cfg.stages.fit_initializations.reference_init_seed,
+            model_init_seed=reference_init_seed,
             analytic_subspace=job.analytic_subspace,
             report_to=cfg.training.report_to,
             run_name=job.run_name,
