@@ -77,7 +77,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval-every", type=int, default=None)
-    parser.add_argument("--transfer-seed", type=int, default=0)
+    parser.add_argument("--transfer-seed", type=int, default=None)
     parser.add_argument("--skip-transfer", action="store_true")
     parser.add_argument("--skip-random", action="store_true")
     parser.add_argument("--skip-fits", action="store_true")
@@ -211,6 +211,77 @@ def default_checkpoint_dirs(cfg: ExperimentConfig) -> list[Path]:
     return [prepretraining_seed_dir(cfg, seed) for seed in cfg.sweep.seeds]
 
 
+def _seed_from_checkpoint_dir(path: Path) -> int | None:
+    """Extract the numeric seed from a checkpoint directory name."""
+
+    match = re.fullmatch(r"seed_(\d+)", path.name)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _candidate_prepretrain_loss(seed_dir: Path) -> float | None:
+    """Return the best recorded pre-pretraining loss for one seed."""
+
+    summary_path = seed_dir / "prepretrain_metrics.json"
+    if summary_path.exists():
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            for key in ("best_logged_loss", "train_loss", "training_loss"):
+                value = payload.get(key)
+                if value is None:
+                    continue
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    continue
+
+    trainer_state_paths = [seed_dir / "trainer_state.json", *seed_dir.glob("checkpoint-*/trainer_state.json")]
+    best_loss: float | None = None
+    for trainer_state_path in trainer_state_paths:
+        if not trainer_state_path.exists():
+            continue
+        try:
+            payload = json.loads(trainer_state_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for entry in payload.get("log_history", []):
+            value = entry.get("loss")
+            if value is None:
+                continue
+            try:
+                loss = float(value)
+            except (TypeError, ValueError):
+                continue
+            if best_loss is None or loss < best_loss:
+                best_loss = loss
+    return best_loss
+
+
+def select_best_prepretraining_seed(cfg: ExperimentConfig) -> int:
+    """Pick the pre-pretraining seed with the lowest recorded loss."""
+
+    candidates: list[tuple[float, int]] = []
+    for seed_dir in default_checkpoint_dirs(cfg):
+        seed = _seed_from_checkpoint_dir(seed_dir)
+        if seed is None or not seed_dir.exists():
+            continue
+        loss = _candidate_prepretrain_loss(seed_dir)
+        if loss is None:
+            continue
+        candidates.append((loss, seed))
+    if not candidates:
+        raise FileNotFoundError(
+            "Could not determine the best pre-pretraining seed from existing "
+            "checkpoints. Expected trainer_state.json or prepretrain_metrics.json."
+        )
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0][1]
+
+
 def infer_num_attention_heads(model_dir: Path) -> int | None:
     """Infer GPT-style attention head count from a saved config file."""
 
@@ -274,6 +345,17 @@ def doctor_checks(
     """Validate that all required inputs exist for the requested stages."""
 
     issues: list[str] = []
+    selected_transfer_seed: int | None = None
+    if not args.skip_transfer:
+        try:
+            selected_transfer_seed = (
+                int(args.transfer_seed)
+                if args.transfer_seed is not None
+                else select_best_prepretraining_seed(cfg)
+            )
+        except FileNotFoundError as exc:
+            issues.append(str(exc))
+            selected_transfer_seed = None
     if run_fit_initializations:
         missing_ckpts = [
             path for path in default_checkpoint_dirs(cfg) if not path.exists()
@@ -284,11 +366,13 @@ def doctor_checks(
         return issues
 
     if not args.skip_transfer:
-        transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
+        if selected_transfer_seed is None:
+            return issues
+        transfer_seed_path = prepretraining_seed_dir(cfg, selected_transfer_seed)
         if not transfer_seed_path.exists():
             issues.append(
                 "Missing transfer checkpoint "
-                f"seed_{args.transfer_seed}: {transfer_seed_path}"
+                f"seed_{selected_transfer_seed}: {transfer_seed_path}"
             )
     if run_fit_initializations or not run_fit_jobs(args):
         return issues
@@ -412,6 +496,7 @@ def build_pretrain_jobs(
     basis_subspaces: dict[str, dict[str, object]],
     transfer_model_path: str | None,
     transfer_state_dict: dict[str, torch.Tensor] | None,
+    transfer_seed: int | None,
 ) -> list[PretrainJob]:
     """Build the list of downstream initialization variants to evaluate."""
 
@@ -457,12 +542,26 @@ def build_pretrain_jobs(
                 out_name="weight_transfer",
                 run_name=(
                     f"{cfg.sweep.experiment_name}-init-eval-"
-                    f"weight-transfer-seed{args.transfer_seed}"
+                    f"weight-transfer-seed{transfer_seed}"
                 ),
                 transfer_model_path=transfer_model_path,
-                transfer_state_dict=transfer_state_dict,
             )
         )
+        if transfer_state_dict is not None:
+            jobs.append(
+                PretrainJob(
+                    label="rebasin_weight_transfer",
+                    variant="weight_transfer",
+                    init_mode="rebasin_transfer",
+                    out_name="rebasin_weight_transfer",
+                    run_name=(
+                        f"{cfg.sweep.experiment_name}-init-eval-"
+                        f"rebasin-weight-transfer-seed{transfer_seed}"
+                    ),
+                    transfer_model_path=transfer_model_path,
+                    transfer_state_dict=transfer_state_dict,
+                )
+            )
     return jobs
 
 
@@ -528,19 +627,31 @@ def pretrain_stage(
     transfer_model_path = None
     transfer_projection_assets = None
     transfer_state_dict = None
+    selected_transfer_seed: int | None = None
     if not args.skip_transfer:
-        transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
+        selected_transfer_seed = (
+            int(args.transfer_seed)
+            if args.transfer_seed is not None
+            else select_best_prepretraining_seed(cfg)
+        )
+        transfer_seed_path = prepretraining_seed_dir(cfg, selected_transfer_seed)
         if not transfer_seed_path.exists():
             raise FileNotFoundError(
                 f"Missing transfer checkpoint for seed "
-                f"{args.transfer_seed}: {transfer_seed_path}"
+                f"{selected_transfer_seed}: {transfer_seed_path}"
             )
         transfer_model_path = str(transfer_seed_path)
         transfer_projection_assets = load_transfer_projection_assets(
             transfer_model_path,
             bf16=cfg.training.bf16,
+            fp16=cfg.training.fp16,
             prefer_flash_attention_2=cfg.training.prefer_flash_attention_2,
         )
+        merged_transfer_state_path = basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME
+        if merged_transfer_state_path.exists():
+            transfer_state_dict = torch.load(
+                merged_transfer_state_path, map_location="cpu"
+            )
 
     jobs = build_pretrain_jobs(
         cfg,
@@ -548,6 +659,7 @@ def pretrain_stage(
         basis_subspaces=basis_subspaces,
         transfer_model_path=transfer_model_path,
         transfer_state_dict=transfer_state_dict,
+        transfer_seed=selected_transfer_seed,
     )
     if not jobs:
         raise ValueError(

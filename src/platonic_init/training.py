@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import json
 import os
 import platform
 import sys
@@ -844,10 +845,29 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         report_to=config.training.report_to,
         run_name=run_name,
     )
-    trainer.train()
+    train_result = trainer.train()
+    logged_losses = [
+        float(entry["loss"])
+        for entry in trainer.state.log_history
+        if entry.get("loss") is not None
+    ]
     finish_wandb_run(config.training.report_to)
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
+    metrics_path = Path(output_dir) / "prepretrain_metrics.json"
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "seed": int(seed),
+                "run_name": run_name,
+                "train_loss": float(train_result.training_loss),
+                "best_logged_loss": min(logged_losses) if logged_losses else None,
+                "global_step": int(trainer.state.global_step),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return Path(output_dir)
 
 
