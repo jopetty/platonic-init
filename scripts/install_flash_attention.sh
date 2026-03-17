@@ -7,9 +7,14 @@ IMAGE="${IMAGE:-/share/apps/images/cuda12.3.2-cudnn9.0.0-ubuntu-22.04.4.sif}"
 FLASH_ATTN_VERSION="${FLASH_ATTN_VERSION:-2.8.3}"
 UV_CACHE_DIR="${UV_CACHE_DIR:-/scratch/$USER/.cache/uv}"
 TMPDIR="${TMPDIR:-/scratch/$USER/tmp}"
+SINGULARITY_FAKEROOT="${SINGULARITY_FAKEROOT:-0}"
 
-exec singularity exec --nv \
-  --overlay "${OVERLAY}:rw" \
+SINGULARITY_ARGS=(exec --nv --overlay "${OVERLAY}:rw")
+if [[ "${SINGULARITY_FAKEROOT}" == "1" ]]; then
+  SINGULARITY_ARGS=(exec --fakeroot --nv --overlay "${OVERLAY}:rw")
+fi
+
+exec singularity "${SINGULARITY_ARGS[@]}" \
   "${IMAGE}" \
   /bin/bash -lc "
     set -euo pipefail
