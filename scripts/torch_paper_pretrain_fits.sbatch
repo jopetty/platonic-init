@@ -3,7 +3,7 @@
 #SBATCH --account=torch_pr_287_general
 #SBATCH --gres=gpu:h200:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --mem=96G
 #SBATCH --time=04:00:00
 #SBATCH --output=logs/slurm-%x-%j.out
 
