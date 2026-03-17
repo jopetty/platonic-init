@@ -1,15 +1,7 @@
-"""Weight-space analysis and platonic-initialization mechanics.
-
-The main flow is:
-1. Load matching checkpoints into state dicts.
-2. Estimate a tensor-wise shared subspace with PCA.
-3. Fit each principal direction with a compact analytic basis.
-4. Reconstruct a deterministic or sampled initialization from that basis.
-"""
+"""Weight-space mechanics for compact delta-based initialization artifacts."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -18,7 +10,7 @@ import torch
 from safetensors.torch import load_file as safe_load_file
 from tqdm import tqdm
 
-from .config import AnalysisConfig, AnalyticFitConfig
+from .config import AnalyticFitConfig
 
 
 def load_state_dict(model_dir: Path) -> dict[str, torch.Tensor]:
@@ -38,22 +30,8 @@ def load_state_dict(model_dir: Path) -> dict[str, torch.Tensor]:
     raise FileNotFoundError(f"No checkpoint file found in {model_dir}")
 
 
-def dtype_from_name(name: str) -> torch.dtype:
-    """Map config strings to torch dtypes."""
-
-    mapping = {
-        "float16": torch.float16,
-        "bfloat16": torch.bfloat16,
-        "float32": torch.float32,
-        "float64": torch.float64,
-    }
-    if name not in mapping:
-        raise ValueError(f"Unsupported dtype string: {name}")
-    return mapping[name]
-
-
 def filter_float_tensor_keys(state: dict[str, torch.Tensor]) -> list[str]:
-    """Return tensor keys that participate in PCA analysis."""
+    """Return floating-point tensor keys that participate in delta fitting."""
 
     keys = []
     for key, value in state.items():
@@ -63,107 +41,6 @@ def filter_float_tensor_keys(state: dict[str, torch.Tensor]) -> list[str]:
             continue
         keys.append(key)
     return sorted(keys)
-
-
-def stack_tensor_values(
-    states: list[dict[str, torch.Tensor]],
-    key: str,
-    analysis_cfg: AnalysisConfig,
-) -> tuple[torch.Tensor, tuple[int, ...]]:
-    """Flatten one tensor across checkpoints into a matrix for PCA."""
-
-    dtype = dtype_from_name(analysis_cfg.dtype)
-    flattened = []
-    shape = tuple(states[0][key].shape)
-    for state in states:
-        tensor = state[key].detach().to(dtype=torch.float32, device="cpu")
-        if tuple(tensor.shape) != shape:
-            raise ValueError(
-                f"Shape mismatch for tensor {key}: "
-                f"expected {shape}, got {tuple(tensor.shape)}"
-            )
-        flattened.append(tensor.reshape(-1))
-
-    matrix = torch.stack(flattened, dim=0)
-    if (
-        analysis_cfg.max_params_per_tensor is not None
-        and matrix.shape[1] > analysis_cfg.max_params_per_tensor
-    ):
-        idx = torch.linspace(
-            0, matrix.shape[1] - 1, steps=analysis_cfg.max_params_per_tensor
-        ).long()
-        matrix = matrix[:, idx]
-    return matrix.to(dtype=dtype), shape
-
-
-def tensorwise_pca(
-    states: list[dict[str, torch.Tensor]], cfg: AnalysisConfig
-) -> dict[str, Any]:
-    """Estimate a shared low-rank subspace for each tensor across checkpoints."""
-
-    if len(states) < 2:
-        raise ValueError("Need at least 2 checkpoints to estimate shared subspace")
-
-    keys = filter_float_tensor_keys(states[0])
-    for state in states[1:]:
-        present = set(filter_float_tensor_keys(state))
-        missing = [key for key in keys if key not in present]
-        if missing:
-            raise ValueError(f"Missing tensor keys in checkpoint: {missing[:5]}")
-
-    stats: dict[str, Any] = {}
-    for key in tqdm(keys, desc="Analyzing tensors"):
-        matrix, shape = stack_tensor_values(states, key, cfg)
-        mean = matrix.mean(dim=0)
-        centered = matrix - mean
-
-        max_rank = min(matrix.shape[0] - 1, matrix.shape[1])
-        k = min(cfg.top_k_components, max_rank)
-        if k <= 0:
-            continue
-
-        _, singular_values, v_t = torch.linalg.svd(centered, full_matrices=False)
-        components = v_t[:k]
-        explained_variance = (singular_values**2) / max(1, matrix.shape[0] - 1)
-        explained_ratio = explained_variance / explained_variance.sum().clamp(min=1e-12)
-
-        stats[key] = {
-            "shape": shape,
-            "numel": int(np.prod(shape)),
-            "mean": mean,
-            "components": components,
-            "explained_variance": explained_variance[:k],
-            "explained_variance_ratio": explained_ratio[:k],
-        }
-
-    return stats
-
-
-def build_summary(stats: dict[str, Any]) -> dict[str, Any]:
-    """Build a JSON-serializable summary of PCA results."""
-
-    summary = {
-        "num_tensors": len(stats),
-        "total_params_analyzed": int(sum(entry["numel"] for entry in stats.values())),
-        "tensors": {},
-    }
-    for key, entry in stats.items():
-        summary["tensors"][key] = {
-            "shape": list(entry["shape"]),
-            "numel": entry["numel"],
-            "explained_variance_ratio": [
-                float(x) for x in entry["explained_variance_ratio"].cpu().tolist()
-            ],
-        }
-    return summary
-
-
-def save_summary(stats: dict[str, Any], path: str | Path) -> None:
-    """Write a subspace summary JSON file."""
-
-    out_path = Path(path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(build_summary(stats), indent=2), encoding="utf-8")
 
 
 def coerce_exp_scales(exp_scales: Iterable[float] | None) -> list[float]:
@@ -312,48 +189,63 @@ def fit_vector(vec: torch.Tensor, cfg: AnalyticFitConfig) -> tuple[np.ndarray, f
     return coeffs, rel_error
 
 
-def fit_analytic_subspace(
-    subspace: dict[str, Any],
+def fit_analytic_delta(
+    reference_state: dict[str, torch.Tensor],
+    target_state: dict[str, torch.Tensor],
     cfg: AnalyticFitConfig,
+    *,
+    reference_init_seed: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Compress each PCA component into analytic basis coefficients."""
+    """Fit a compact analytic approximation to the weight delta from a base init."""
 
-    out: dict[str, Any] = {}
+    out: dict[str, Any] = {
+        "__meta__": {
+            "artifact_type": "analytic_delta",
+            "reference_init_seed": int(reference_init_seed),
+        }
+    }
     report: dict[str, Any] = {"tensors": {}, "mean_relative_error": 0.0}
-    all_errors = []
+    all_errors: list[float] = []
 
-    for key, entry in subspace.items():
-        mean = entry["mean"]
-        components = entry["components"]
-        n = int(mean.numel())
+    keys = filter_float_tensor_keys(target_state)
+    for key in tqdm(keys, desc="Fitting tensor deltas"):
+        if key not in reference_state:
+            raise ValueError(f"Missing tensor {key} in reference state")
+        ref_tensor = reference_state[key]
+        target_tensor = target_state[key]
+        if tuple(ref_tensor.shape) != tuple(target_tensor.shape):
+            raise ValueError(
+                f"Shape mismatch for tensor {key}: "
+                "reference="
+                f"{tuple(ref_tensor.shape)} "
+                f"target={tuple(target_tensor.shape)}"
+            )
 
-        component_coeffs = []
-        component_errors = []
-        for index in range(components.shape[0]):
-            coeffs, err = fit_vector(components[index], cfg)
-            component_coeffs.append(torch.from_numpy(coeffs).to(torch.float32))
-            component_errors.append(err)
-            all_errors.append(err)
+        delta = (
+            target_tensor.detach().to(dtype=torch.float32, device="cpu")
+            - ref_tensor.detach().to(dtype=torch.float32, device="cpu")
+        ).reshape(-1)
+        coeffs, err = fit_vector(delta, cfg)
+        coeff_tensor = torch.from_numpy(coeffs).to(torch.float32)
+        n = int(delta.numel())
+        basis_params_dict = basis_params(cfg)
+        basis_dim = int(
+            build_basis_numpy(n, cfg.basis_type, **basis_params_dict).shape[1]
+        )
 
         out[key] = {
-            "shape": entry["shape"],
-            "numel": entry["numel"],
-            "mean": mean,
+            "shape": tuple(target_tensor.shape),
+            "numel": n,
             "basis_type": cfg.basis_type,
-            "basis_params": basis_params(cfg),
-            "basis_dim": int(
-                build_basis_numpy(n, cfg.basis_type, **basis_params(cfg)).shape[1]
-            ),
-            "component_coeffs": component_coeffs,
-            "explained_variance": entry["explained_variance"],
-            "explained_variance_ratio": entry["explained_variance_ratio"],
+            "basis_params": basis_params_dict,
+            "basis_dim": basis_dim,
+            "delta_coeffs": coeff_tensor,
         }
         report["tensors"][key] = {
-            "component_relative_errors": component_errors,
-            "mean_component_relative_error": float(np.mean(component_errors))
-            if component_errors
-            else 0.0,
+            "component_relative_errors": [err],
+            "mean_component_relative_error": err,
         }
+        all_errors.append(err)
 
     report["mean_relative_error"] = float(np.mean(all_errors)) if all_errors else 0.0
     return out, report
@@ -371,90 +263,46 @@ def reconstruct_component(
     return basis @ coeffs.to(torch.float32)
 
 
-def build_platonic_state_dict(
+def build_delta_state_dict(
     reference_state: dict[str, torch.Tensor],
-    analytic_subspace: dict[str, Any],
-    latent: dict[str, torch.Tensor] | None = None,
-    latent_scale: float = 1.0,
+    analytic_delta: dict[str, Any],
 ) -> dict[str, torch.Tensor]:
-    """Construct a new state dict by applying the analytic subspace to a model."""
+    """Construct a new state dict by adding a fitted analytic delta to a base init."""
 
     out = {key: value.detach().clone() for key, value in reference_state.items()}
 
-    for key, entry in analytic_subspace.items():
+    for key, entry in analytic_delta.items():
+        if key.startswith("__"):
+            continue
         if key not in out:
             continue
+
         target = out[key]
         if not torch.is_floating_point(target):
             continue
 
-        mean = entry["mean"].to(torch.float32)
-        if mean.numel() != target.numel():
-            continue
-
-        entry_basis_params = entry.get("basis_params")
-        if entry_basis_params is None:
-            entry_basis_params = {
-                "poly_degree": int(entry.get("poly_degree", 5)),
-                "exp_scales": [
-                    float(x) for x in entry.get("exp_scales", [0.5, 1.0, 2.0, 4.0])
-                ],
-            }
-        coeffs = entry["component_coeffs"]
-
-        vec = mean.clone()
-        if latent is not None and key in latent and len(coeffs) > 0:
-            z = latent[key].to(torch.float32) * float(latent_scale)
-            if z.numel() != len(coeffs):
-                raise ValueError(
-                    f"Latent dim mismatch for {key}: "
-                    f"got {z.numel()} expected {len(coeffs)}"
-                )
-            for index, coeff in enumerate(coeffs):
-                component = reconstruct_component(
-                    len(vec), coeff, entry["basis_type"], entry_basis_params
-                )
-                vec = vec + z[index] * component
-
         if int(np.prod(entry["shape"])) != target.numel():
             continue
+
+        basis_params_dict = entry.get("basis_params", {})
+        delta = reconstruct_component(
+            target.numel(),
+            entry["delta_coeffs"],
+            entry["basis_type"],
+            basis_params_dict,
+        )
+        vec = target.detach().to(dtype=torch.float32).reshape(-1) + delta
         out[key] = vec.reshape(target.shape).to(dtype=target.dtype)
 
     return out
 
 
-def sample_latent(
-    analytic_subspace: dict[str, Any], seed: int = 0
-) -> dict[str, torch.Tensor]:
-    """Sample latent coordinates using the stored explained variances."""
-
-    rng = np.random.default_rng(seed)
-    latent: dict[str, torch.Tensor] = {}
-    for key, entry in analytic_subspace.items():
-        explained_variance = entry.get("explained_variance")
-        k = len(entry["component_coeffs"])
-        if k == 0:
-            continue
-        if explained_variance is None:
-            std = np.ones(k, dtype=np.float32)
-        else:
-            std = np.sqrt(torch.as_tensor(explained_variance).cpu().numpy()[:k]).astype(
-                np.float32
-            )
-        latent[key] = torch.from_numpy(rng.normal(0.0, std, size=k).astype(np.float32))
-    return latent
-
-
-def apply_platonic_init(
+def apply_analytic_delta_init(
     model: torch.nn.Module,
-    analytic_subspace: dict[str, Any],
-    latent: dict[str, torch.Tensor] | None = None,
-    latent_scale: float = 1.0,
+    analytic_delta: dict[str, Any],
 ) -> torch.nn.Module:
-    """Apply a platonic initialization directly to a live model."""
+    """Apply a compact fitted delta to a freshly initialized model."""
 
-    new_state = build_platonic_state_dict(
-        model.state_dict(), analytic_subspace, latent=latent, latent_scale=latent_scale
-    )
+    new_state = build_delta_state_dict(model.state_dict(), analytic_delta)
     model.load_state_dict(new_state, strict=False)
     return model

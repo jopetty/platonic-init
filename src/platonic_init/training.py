@@ -31,7 +31,7 @@ from .data import (
     load_text_dataset,
     tokenizer_cache_key,
 )
-from .initialization import apply_platonic_init, sample_latent
+from .initialization import apply_analytic_delta_init
 from .support import dataset_cache_root, prepretraining_root, prepretraining_seed_dir
 
 
@@ -109,6 +109,29 @@ def load_pretrained_model(
         model_name_or_path,
         **model_kwargs(bf16=bf16, prefer_flash_attention_2=prefer_flash_attention_2),
     )
+
+
+def build_initialized_state_dict(
+    model_name_or_path: str,
+    tokenizer,
+    *,
+    seed: int,
+    bf16: bool = False,
+    prefer_flash_attention_2: bool = True,
+) -> dict[str, torch.Tensor]:
+    """Instantiate a deterministic fresh model and return its state dict on CPU."""
+
+    set_seed(seed)
+    model = build_model_from_config(
+        model_name_or_path,
+        bf16=bf16,
+        prefer_flash_attention_2=prefer_flash_attention_2,
+    )
+    model.resize_token_embeddings(len(tokenizer))
+    return {
+        key: value.detach().to(device="cpu").clone()
+        for key, value in model.state_dict().items()
+    }
 
 
 def resolve_max_length(model: torch.nn.Module, block_size: int) -> int:
@@ -448,9 +471,8 @@ def run_variant(
     learning_rate: float,
     block_size: int,
     seed: int,
+    model_init_seed: int | None = None,
     analytic_subspace: dict[str, Any] | None = None,
-    latent_seed: int = 0,
-    latent_scale: float = 1.0,
     report_to: list[str] | None = None,
     run_name: str | None = None,
     wandb_project: str | None = None,
@@ -472,7 +494,8 @@ def run_variant(
 ) -> dict[str, Any]:
     """Run one downstream initialization-evaluation job end-to-end."""
 
-    set_seed(seed)
+    init_seed = seed if model_init_seed is None else int(model_init_seed)
+    set_seed(init_seed)
     configure_wandb_env(
         report_to=report_to,
         wandb_project=wandb_project,
@@ -488,6 +511,7 @@ def run_variant(
     )
     model.resize_token_embeddings(len(tokenizer))
     max_length = resolve_max_length(model, block_size)
+    set_seed(seed)
 
     copied_embedding_rows = 0
     if variant == "weight_transfer":
@@ -519,15 +543,10 @@ def run_variant(
                 prefer_flash_attention_2=prefer_flash_attention_2,
             )
 
-    if variant.startswith("platonic"):
+    if variant == "platonic_delta":
         if analytic_subspace is None:
             raise ValueError("analytic_subspace is required for platonic variants")
-        latent = None
-        if variant == "platonic_sampled":
-            latent = sample_latent(analytic_subspace, seed=latent_seed)
-        apply_platonic_init(
-            model, analytic_subspace, latent=latent, latent_scale=latent_scale
-        )
+        apply_analytic_delta_init(model, analytic_subspace)
 
     if variant != "weight_transfer":
         copied_embedding_rows = apply_prepretrain_projection(

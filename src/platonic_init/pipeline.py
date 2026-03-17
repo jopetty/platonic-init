@@ -21,13 +21,12 @@ from .data import (
     dataset_cache_key,
     load_init_eval_datasets,
     load_or_create_tokenized_dataset,
+    load_saved_tokenizer,
     tokenizer_cache_key,
 )
 from .initialization import (
-    build_summary,
-    fit_analytic_subspace,
+    fit_analytic_delta,
     load_state_dict,
-    tensorwise_pca,
 )
 from .rebasin import align_states_for_pca
 from .support import (
@@ -40,7 +39,13 @@ from .support import (
     pretraining_artifacts_dir,
     pretraining_init_eval_basis_root,
 )
-from .training import PretrainJob, load_transfer_projection_assets, run_variant, sweep
+from .training import (
+    PretrainJob,
+    build_initialized_state_dict,
+    load_transfer_projection_assets,
+    run_variant,
+    sweep,
+)
 
 STAGE_PREPRETRAIN = "prepretrain"
 STAGE_FIT_INITIALIZATIONS = "fit_initializations"
@@ -72,9 +77,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval-every", type=int, default=None)
-    parser.add_argument(
-        "--init-mode", type=str, default="sampled", choices=["mean", "sampled"]
-    )
     parser.add_argument("--transfer-seed", type=int, default=0)
     parser.add_argument("--skip-transfer", action="store_true")
     parser.add_argument("--skip-random", action="store_true")
@@ -183,7 +185,7 @@ def write_pretraining_summaries(
     curves_payload = {
         "config": args.config,
         "fit_names": [job.label for job in jobs if job.analytic_subspace is not None],
-        "init_mode": args.init_mode,
+        "init_mode": "delta",
         "train_steps": args.eval_steps,
         "eval_every": args.eval_every,
         "seed": args.seed,
@@ -316,7 +318,7 @@ def fit_initializations_stage(
     analysis_artifacts: Path,
     basis_sweep_artifacts: Path,
 ) -> dict[str, dict[str, object]]:
-    """Align seed checkpoints, run PCA, and fit analytic initialization blocks."""
+    """Align seed checkpoints and fit compact analytic deltas from a base init."""
 
     checkpoints = default_checkpoint_dirs(cfg)
     missing = [path for path in checkpoints if not path.exists()]
@@ -337,19 +339,25 @@ def fit_initializations_stage(
 
     merged_state = build_merged_state(states)
     torch.save(merged_state, basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME)
-
-    subspace = tensorwise_pca(states, cfg.analysis)
-    torch.save(subspace, analysis_artifacts / "weight_subspace.pt")
-    (analysis_artifacts / "weight_subspace_summary.json").write_text(
-        json.dumps(build_summary(subspace), indent=2),
-        encoding="utf-8",
+    reference_tokenizer = load_saved_tokenizer(checkpoints[0])
+    reference_state = build_initialized_state_dict(
+        str(checkpoints[0]),
+        reference_tokenizer,
+        seed=int(cfg.stages.fit_initializations.reference_init_seed),
+        bf16=cfg.training.bf16,
+        prefer_flash_attention_2=cfg.training.prefer_flash_attention_2,
     )
 
     basis_subspaces: dict[str, dict[str, object]] = {}
-    fit_manifest: dict[str, dict[str, str]] = {}
+    fit_manifest: dict[str, dict[str, object]] = {}
     for block in selected_fit_blocks(cfg, args):
         fit_cfg = block.to_fit_config()
-        basis_subspace, basis_report = fit_analytic_subspace(subspace, fit_cfg)
+        basis_subspace, basis_report = fit_analytic_delta(
+            reference_state,
+            merged_state,
+            fit_cfg,
+            reference_init_seed=int(cfg.stages.fit_initializations.reference_init_seed),
+        )
         slug = fit_block_slug(block.name)
         torch.save(
             basis_subspace, basis_sweep_artifacts / f"analytic_subspace_{slug}.pt"
@@ -359,7 +367,14 @@ def fit_initializations_stage(
             encoding="utf-8",
         )
         basis_subspaces[block.name] = basis_subspace
-        fit_manifest[block.name] = {"slug": slug, "basis_type": fit_cfg.basis_type}
+        fit_manifest[block.name] = {
+            "slug": slug,
+            "basis_type": fit_cfg.basis_type,
+            "reference_init_seed": int(
+                cfg.stages.fit_initializations.reference_init_seed
+            ),
+            "artifact_type": "analytic_delta",
+        }
 
     (basis_sweep_artifacts / "fit_blocks.json").write_text(
         json.dumps(fit_manifest, indent=2), encoding="utf-8"
@@ -413,19 +428,16 @@ def build_pretrain_jobs(
         )
 
     if run_fit_jobs(args):
-        platonic_variant = (
-            "platonic_mean" if args.init_mode == "mean" else "platonic_sampled"
-        )
         for block in selected_fit_blocks(cfg, args):
             jobs.append(
                 PretrainJob(
                     label=block.name,
-                    variant=platonic_variant,
-                    init_mode=args.init_mode,
+                    variant="platonic_delta",
+                    init_mode="delta",
                     out_name=block.name,
                     run_name=(
                         f"{cfg.sweep.experiment_name}-init-eval-"
-                        f"{block.name}-{args.init_mode}"
+                        f"{block.name}-delta"
                     ),
                     analytic_subspace=basis_subspaces[block.name],
                 )
@@ -571,9 +583,8 @@ def pretrain_stage(
             learning_rate=cfg.training.learning_rate,
             block_size=cfg.training.block_size,
             seed=args.seed,
+            model_init_seed=cfg.stages.fit_initializations.reference_init_seed,
             analytic_subspace=job.analytic_subspace,
-            latent_seed=args.seed + 100,
-            latent_scale=1.0,
             report_to=cfg.training.report_to,
             run_name=job.run_name,
             wandb_project=cfg.training.wandb_project,
