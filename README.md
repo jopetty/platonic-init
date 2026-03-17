@@ -164,8 +164,8 @@ uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stage
 For the tiny-GPT2 paper-replication proxy on C4 using direct checkpoint transfer:
 ```bash
 uv run python scripts/generate_formal_language.py --language shuffle_dyck --k 64 --n-samples 20000 --max-depth 10 --output data/shuffle_dyck_k64_d10_20k.txt
-uv run python -m platonic_init.pipeline --config configs/experiment_tinygpt2_shuffle_dyck_c4_weight_transfer.yaml --stages prepretrain
-uv run python -m platonic_init.pipeline --config configs/experiment_tinygpt2_shuffle_dyck_c4_weight_transfer.yaml --stages pretrain --skip-fits
+uv run python -m platonic_init.pipeline --config configs/gpt2_tiny_c4_ppt_reproduction.yaml --stages prepretrain
+uv run python -m platonic_init.pipeline --config configs/gpt2_tiny_c4_ppt_reproduction.yaml --stages pretrain --skip-fits
 ```
 This transfer-only path now loads the selected pre-pretrained checkpoint directly for `weight_transfer`; it does not require analytic-fit artifacts.
 

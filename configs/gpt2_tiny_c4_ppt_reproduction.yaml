@@ -41,18 +41,30 @@ stages:
       - name: chebyshev_d6
         basis_type: chebyshev
         chebyshev_degree: 6
-      - name: chebyshev_d12
+      - name: chebyshev_d8
         basis_type: chebyshev
-        chebyshev_degree: 12
-      - name: chebyshev_d24
+        chebyshev_degree: 8
+      - name: chebyshev_d16
         basis_type: chebyshev
-        chebyshev_degree: 24
-      - name: chebyshev_d48
+        chebyshev_degree: 16
+      - name: chebyshev_d32
         basis_type: chebyshev
-        chebyshev_degree: 48
+        chebyshev_degree: 32
+      - name: chebyshev_d64
+        basis_type: chebyshev
+        chebyshev_degree: 64
       - name: chebyshev_d128
         basis_type: chebyshev
         chebyshev_degree: 128
+      - name: chebyshev_d256
+        basis_type: chebyshev
+        chebyshev_degree: 256
+      - name: chebyshev_d512
+        basis_type: chebyshev
+        chebyshev_degree: 512
+      - name: chebyshev_d1024
+        basis_type: chebyshev
+        chebyshev_degree: 1024
   pretrain_eval:
     train_steps: 10000
     eval_every: 100
