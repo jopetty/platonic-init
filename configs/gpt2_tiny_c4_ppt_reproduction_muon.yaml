@@ -33,7 +33,7 @@ stages:
       wandb_project: platonic-init
       wandb_entity: null
     sweep:
-      seeds: [0, 1, 2]
+      seeds: [3, 4, 5]
       output_root: runs
       experiment_name: gpt2_tiny_c4_ppt_reproduction_muon
   fit_initializations:

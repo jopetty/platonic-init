@@ -1,0 +1,14 @@
+{
+  "chebyshev_d6": {
+    "slug": "chebyshev_d6",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d24": {
+    "slug": "chebyshev_d24",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  }
+}

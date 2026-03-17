@@ -1,0 +1,173 @@
+{
+  "tensors": {
+    "transformer.h.0.attn.c_attn.bias": {
+      "component_relative_errors": [
+        1.9667007542334647e-15
+      ],
+      "mean_component_relative_error": 1.9667007542334647e-15
+    },
+    "transformer.h.0.attn.c_attn.weight": {
+      "component_relative_errors": [
+        0.7260450730817058
+      ],
+      "mean_component_relative_error": 0.7260450730817058
+    },
+    "transformer.h.0.attn.c_proj.bias": {
+      "component_relative_errors": [
+        1.5108956067000132e-16
+      ],
+      "mean_component_relative_error": 1.5108956067000132e-16
+    },
+    "transformer.h.0.attn.c_proj.weight": {
+      "component_relative_errors": [
+        9.107234039501698e-16
+      ],
+      "mean_component_relative_error": 9.107234039501698e-16
+    },
+    "transformer.h.0.ln_1.bias": {
+      "component_relative_errors": [
+        2.9075822476135384e-16
+      ],
+      "mean_component_relative_error": 2.9075822476135384e-16
+    },
+    "transformer.h.0.ln_1.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.h.0.ln_2.bias": {
+      "component_relative_errors": [
+        3.1494253037819903e-16
+      ],
+      "mean_component_relative_error": 3.1494253037819903e-16
+    },
+    "transformer.h.0.ln_2.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.h.0.mlp.c_fc.bias": {
+      "component_relative_errors": [
+        0.21242363919330218
+      ],
+      "mean_component_relative_error": 0.21242363919330218
+    },
+    "transformer.h.0.mlp.c_fc.weight": {
+      "component_relative_errors": [
+        0.6262021892250834
+      ],
+      "mean_component_relative_error": 0.6262021892250834
+    },
+    "transformer.h.0.mlp.c_proj.bias": {
+      "component_relative_errors": [
+        1.7176452512961976e-16
+      ],
+      "mean_component_relative_error": 1.7176452512961976e-16
+    },
+    "transformer.h.0.mlp.c_proj.weight": {
+      "component_relative_errors": [
+        0.893625791012414
+      ],
+      "mean_component_relative_error": 0.893625791012414
+    },
+    "transformer.h.1.attn.c_attn.bias": {
+      "component_relative_errors": [
+        1.7485032630078477e-15
+      ],
+      "mean_component_relative_error": 1.7485032630078477e-15
+    },
+    "transformer.h.1.attn.c_attn.weight": {
+      "component_relative_errors": [
+        0.6590000039214772
+      ],
+      "mean_component_relative_error": 0.6590000039214772
+    },
+    "transformer.h.1.attn.c_proj.bias": {
+      "component_relative_errors": [
+        2.7013764087062103e-16
+      ],
+      "mean_component_relative_error": 2.7013764087062103e-16
+    },
+    "transformer.h.1.attn.c_proj.weight": {
+      "component_relative_errors": [
+        7.403586292816931e-16
+      ],
+      "mean_component_relative_error": 7.403586292816931e-16
+    },
+    "transformer.h.1.ln_1.bias": {
+      "component_relative_errors": [
+        5.601968354271275e-16
+      ],
+      "mean_component_relative_error": 5.601968354271275e-16
+    },
+    "transformer.h.1.ln_1.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.h.1.ln_2.bias": {
+      "component_relative_errors": [
+        3.438305679835514e-16
+      ],
+      "mean_component_relative_error": 3.438305679835514e-16
+    },
+    "transformer.h.1.ln_2.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.h.1.mlp.c_fc.bias": {
+      "component_relative_errors": [
+        0.33251525630998774
+      ],
+      "mean_component_relative_error": 0.33251525630998774
+    },
+    "transformer.h.1.mlp.c_fc.weight": {
+      "component_relative_errors": [
+        0.866309293334636
+      ],
+      "mean_component_relative_error": 0.866309293334636
+    },
+    "transformer.h.1.mlp.c_proj.bias": {
+      "component_relative_errors": [
+        3.068182891830029e-16
+      ],
+      "mean_component_relative_error": 3.068182891830029e-16
+    },
+    "transformer.h.1.mlp.c_proj.weight": {
+      "component_relative_errors": [
+        0.8300250138621642
+      ],
+      "mean_component_relative_error": 0.8300250138621642
+    },
+    "transformer.ln_f.bias": {
+      "component_relative_errors": [
+        3.8561181106028086e-16
+      ],
+      "mean_component_relative_error": 3.8561181106028086e-16
+    },
+    "transformer.ln_f.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.wpe.weight": {
+      "component_relative_errors": [
+        0.9987489015570638
+      ],
+      "mean_component_relative_error": 0.9987489015570638
+    },
+    "transformer.wte.weight": {
+      "component_relative_errors": [
+        0.9999923179810862
+      ],
+      "mean_component_relative_error": 0.9999923179810862
+    }
+  },
+  "mean_relative_error": 0.25517455283853313
+}
