@@ -88,6 +88,17 @@ For each cohort, run stages 1-4 independently, then compare:
 
 ## Quickstart (uv)
 
+Tested GPU runtime:
+- Python `3.12.13`
+- PyTorch `2.4.1+cu121`
+- FlashAttention `2.8.3`
+- Official wheel:
+  `flash_attn-2.8.3+cu12torch2.4cxx11abiFALSE-cp312-cp312-linux_x86_64.whl`
+- Container image:
+  `/share/apps/images/cuda12.2.2-cudnn8.9.4-devel-ubuntu22.04.3.sif`
+- Overlay template:
+  `/share/apps/overlay-fs-ext3/overlay-50G-10M.ext3.gz`
+
 1. Install deps:
 ```bash
 uv sync
@@ -115,6 +126,30 @@ WANDB_ENTITY=...
 HF_TOKEN=...
 HUGGINGFACE_HUB_TOKEN=...
 ```
+
+## FlashAttention Overlay Bootstrap
+
+On NYU Torch HPC, the working path is to build a fresh ext3 overlay and install
+the environment inside the container with `uv`, using the official
+FlashAttention wheel instead of a source build.
+
+Run this on a compute node:
+```bash
+APPTAINER_FAKEROOT=1 bash scripts/bootstrap_flash_attention_overlay.sh
+```
+
+That script will:
+- create `platonic-init-fa.ext3` from the 50 GB overlay template if needed
+- install `uv` under `/ext3/uv`
+- install Python `3.12`
+- create `/ext3/venvs/platonic-init`
+- install the project runtime stack with PyTorch `2.4.x`
+- install the official FlashAttention `2.8.3` wheel
+- install this repo in editable mode
+- verify `flash_attention_2` via `python -m platonic_init.check_flash_attention --require-fa2`
+
+After the bootstrap succeeds, jobs can keep using the default
+`/ext3/venvs/platonic-init/bin/python`.
 
 2. Put your fixed synthetic corpus at:
 ```text
