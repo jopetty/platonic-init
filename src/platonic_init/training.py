@@ -63,12 +63,25 @@ def resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
     return "flash_attention_2"
 
 
-def model_kwargs(*, bf16: bool, prefer_flash_attention_2: bool) -> dict[str, Any]:
+def resolve_model_dtype(*, bf16: bool, fp16: bool) -> torch.dtype | None:
+    """Return the configured runtime dtype for model construction/loading."""
+
+    if bf16:
+        return torch.bfloat16
+    if fp16:
+        return torch.float16
+    return None
+
+
+def model_kwargs(
+    *, bf16: bool, fp16: bool = False, prefer_flash_attention_2: bool
+) -> dict[str, Any]:
     """Build common Hugging Face model-loading kwargs."""
 
     kwargs: dict[str, Any] = {}
-    if bf16:
-        kwargs["torch_dtype"] = torch.bfloat16
+    dtype = resolve_model_dtype(bf16=bf16, fp16=fp16)
+    if dtype is not None:
+        kwargs["dtype"] = dtype
     attn_impl = resolve_attn_implementation(prefer_flash_attention_2)
     if attn_impl is not None:
         kwargs["attn_implementation"] = attn_impl
@@ -79,6 +92,7 @@ def build_model_from_config(
     model_name_or_path: str,
     *,
     bf16: bool = False,
+    fp16: bool = False,
     prefer_flash_attention_2: bool = True,
     vocab_size: int | None = None,
     bos_token_id: int | None = None,
@@ -88,6 +102,9 @@ def build_model_from_config(
     """Instantiate a causal LM from config, optionally overriding tokenizer shape."""
 
     cfg = AutoConfig.from_pretrained(model_name_or_path)
+    dtype = resolve_model_dtype(bf16=bf16, fp16=fp16)
+    if dtype is not None:
+        cfg.torch_dtype = dtype
     if vocab_size is not None:
         cfg.vocab_size = int(vocab_size)
     if bos_token_id is not None:
@@ -98,7 +115,11 @@ def build_model_from_config(
         cfg.pad_token_id = int(pad_token_id)
     return AutoModelForCausalLM.from_config(
         cfg,
-        **model_kwargs(bf16=bf16, prefer_flash_attention_2=prefer_flash_attention_2),
+        **model_kwargs(
+            bf16=bf16,
+            fp16=fp16,
+            prefer_flash_attention_2=prefer_flash_attention_2,
+        ),
     )
 
 
@@ -106,13 +127,18 @@ def load_pretrained_model(
     model_name_or_path: str,
     *,
     bf16: bool = False,
+    fp16: bool = False,
     prefer_flash_attention_2: bool = True,
 ):
     """Load a pretrained causal LM with the repo's runtime defaults."""
 
     return AutoModelForCausalLM.from_pretrained(
         model_name_or_path,
-        **model_kwargs(bf16=bf16, prefer_flash_attention_2=prefer_flash_attention_2),
+        **model_kwargs(
+            bf16=bf16,
+            fp16=fp16,
+            prefer_flash_attention_2=prefer_flash_attention_2,
+        ),
     )
 
 
@@ -122,6 +148,7 @@ def build_initialized_state_dict(
     *,
     seed: int,
     bf16: bool = False,
+    fp16: bool = False,
     prefer_flash_attention_2: bool = True,
 ) -> dict[str, torch.Tensor]:
     """Instantiate a deterministic fresh model and return its state dict on CPU."""
@@ -130,6 +157,7 @@ def build_initialized_state_dict(
     model = build_model_from_config(
         model_name_or_path,
         bf16=bf16,
+        fp16=fp16,
         prefer_flash_attention_2=prefer_flash_attention_2,
     )
     model.resize_token_embeddings(len(tokenizer))
@@ -571,6 +599,7 @@ def run_variant(
     model = build_model_from_config(
         model_name_or_path,
         bf16=bf16,
+        fp16=fp16,
         prefer_flash_attention_2=prefer_flash_attention_2,
     )
     model.resize_token_embeddings(len(tokenizer))
@@ -762,6 +791,7 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
     model = build_model_from_config(
         config.training.model_name_or_path,
         bf16=config.training.bf16,
+        fp16=config.training.fp16,
         prefer_flash_attention_2=config.training.prefer_flash_attention_2,
         vocab_size=len(tokenizer),
         bos_token_id=tokenizer.bos_token_id,
