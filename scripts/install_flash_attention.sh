@@ -28,7 +28,7 @@ exec singularity "${SINGULARITY_ARGS[@]}" \
     export NVCC_THREADS='${NVCC_THREADS}'
     mkdir -p '${UV_CACHE_DIR}' '${TMPDIR}'
     cd '${REPO_ROOT}'
-    '${VENV_PYTHON}' -m pip uninstall -y flash-attn || true
-    '${VENV_PYTHON}' -m pip install -v --no-build-isolation --no-cache-dir 'flash-attn==${FLASH_ATTN_VERSION}'
+    uv pip uninstall --python '${VENV_PYTHON}' flash-attn || true
+    uv pip install --python '${VENV_PYTHON}' -v --no-build-isolation --no-cache-dir 'flash-attn==${FLASH_ATTN_VERSION}'
     '${VENV_PYTHON}' -m platonic_init.check_flash_attention --require-fa2
   "
