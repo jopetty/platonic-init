@@ -1,0 +1,56 @@
+{
+  "chebyshev_d6": {
+    "slug": "chebyshev_d6",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d8": {
+    "slug": "chebyshev_d8",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d16": {
+    "slug": "chebyshev_d16",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d32": {
+    "slug": "chebyshev_d32",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d64": {
+    "slug": "chebyshev_d64",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d128": {
+    "slug": "chebyshev_d128",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d256": {
+    "slug": "chebyshev_d256",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d512": {
+    "slug": "chebyshev_d512",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  },
+  "chebyshev_d1024": {
+    "slug": "chebyshev_d1024",
+    "basis_type": "chebyshev",
+    "reference_init_seed": 0,
+    "artifact_type": "analytic_delta"
+  }
+}
