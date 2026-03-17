@@ -200,6 +200,65 @@ def finish_wandb_run(report_to: list[str] | None) -> None:
     wandb.finish()
 
 
+def summarize_model(model: torch.nn.Module) -> dict[str, int]:
+    """Return total and trainable parameter counts for a model."""
+
+    total_params = sum(parameter.numel() for parameter in model.parameters())
+    trainable_params = sum(
+        parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+    )
+    return {
+        "total_params": int(total_params),
+        "trainable_params": int(trainable_params),
+    }
+
+
+def log_model_summary(
+    *,
+    model: torch.nn.Module,
+    model_name_or_path: str,
+    report_to: list[str] | None,
+    run_name: str | None = None,
+) -> None:
+    """Print and log a concise model summary at the start of training."""
+
+    summary = summarize_model(model)
+    total_params_m = summary["total_params"] / 1_000_000
+    trainable_params_m = summary["trainable_params"] / 1_000_000
+    prefix = f"[{run_name}] " if run_name else ""
+    print(
+        f"{prefix}Model: {model_name_or_path} | "
+        f"params={summary['total_params']:,} ({total_params_m:.2f}M) | "
+        f"trainable={summary['trainable_params']:,} ({trainable_params_m:.2f}M)",
+        flush=True,
+    )
+
+    if not report_to or "wandb" not in report_to:
+        return
+    try:
+        import wandb
+
+        if wandb.run is None:
+            return
+        wandb.config.update(
+            {
+                "model_name_or_path": model_name_or_path,
+                "model_total_params": summary["total_params"],
+                "model_trainable_params": summary["trainable_params"],
+            },
+            allow_val_change=True,
+        )
+        wandb.log(
+            {
+                "model/total_params": summary["total_params"],
+                "model/trainable_params": summary["trainable_params"],
+            },
+            step=0,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class TransferProjectionAssets:
     """Embedding assets used to project pretrained tokens into a new tokenizer."""
@@ -608,6 +667,12 @@ def run_variant(
         eval_dataset=eval_ds,
         callbacks=callbacks or None,
     )
+    log_model_summary(
+        model=model,
+        model_name_or_path=model_name_or_path,
+        report_to=report_to,
+        run_name=run_name,
+    )
     initial_metrics = trainer.evaluate()
     train_result = trainer.train()
     final_metrics = trainer.evaluate()
@@ -742,6 +807,12 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         args=args,
         processing_class=tokenizer,
         train_dataset=dataset,
+    )
+    log_model_summary(
+        model=model,
+        model_name_or_path=config.training.model_name_or_path,
+        report_to=config.training.report_to,
+        run_name=run_name,
     )
     trainer.train()
     finish_wandb_run(config.training.report_to)
