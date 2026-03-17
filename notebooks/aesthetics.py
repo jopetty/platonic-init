@@ -392,12 +392,13 @@ def set_figure_title(
     *,
     x: float = 0.0,
     y: float = 0.995,
+    subtitle_offset: float = 0.07,
     title_kwargs: Mapping[str, Any] | None = None,
     subtitle_kwargs: Mapping[str, Any] | None = None,
 ):
     """Add a left-aligned bold figure title and optional subtitle."""
 
-    title_y = y if subtitle is not None else y - 0.07
+    title_y = y if subtitle is not None else y - subtitle_offset
     title_text = fig.suptitle(
         title,
         x=x,
@@ -415,7 +416,9 @@ def set_figure_title(
             "va": "top",
         }
         subtitle_defaults.update(dict(subtitle_kwargs or {}))
-        subtitle_text = fig.text(x, y - 0.07, subtitle, **subtitle_defaults)
+        subtitle_text = fig.text(
+            x, y - subtitle_offset, subtitle, **subtitle_defaults
+        )
     return title_text, subtitle_text
 
 

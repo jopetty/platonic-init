@@ -169,6 +169,30 @@ uv run python -m platonic_init.pipeline --config configs/gpt2_tiny_c4_ppt_reprod
 ```
 This transfer-only path now loads the selected pre-pretrained checkpoint directly for `weight_transfer`; it does not require analytic-fit artifacts.
 
+For Torch cluster runs, use the size-specific submit wrappers instead of setting
+`CONFIG_PATH` by hand:
+```bash
+scripts/submit_gpt2_tiny.sh prepretrain
+scripts/submit_gpt2_tiny.sh pretrain
+scripts/submit_gpt2_tiny.sh pretrain-fits
+
+scripts/submit_gpt2_medium.sh prepretrain
+scripts/submit_gpt2_medium.sh pretrain
+scripts/submit_gpt2_medium.sh pretrain-fits
+```
+Available wrappers:
+- `scripts/submit_gpt2_tiny.sh`
+- `scripts/submit_gpt2.sh`
+- `scripts/submit_gpt2_medium.sh`
+- `scripts/submit_gpt2_large.sh`
+- `scripts/submit_gpt2_xl.sh`
+
+Each wrapper accepts the stage name first, followed by optional extra `sbatch`
+args. Example:
+```bash
+scripts/submit_gpt2_medium.sh pretrain-fits --export=FIT_NAMES=chebyshev_d24
+```
+
 Configs are stage-scoped only. The canonical shape is:
 ```yaml
 stages:
