@@ -127,29 +127,27 @@ HF_TOKEN=...
 HUGGINGFACE_HUB_TOKEN=...
 ```
 
-## FlashAttention Overlay Bootstrap
+## FlashAttention Scratch Venv Bootstrap
 
-On NYU Torch HPC, the working path is to build a fresh ext3 overlay and install
-the environment inside the container with `uv`, using the official
-FlashAttention wheel instead of a source build.
+On NYU Torch HPC, the supported path is to build the environment on `/scratch`
+with `uv`, using the official FlashAttention wheel instead of a source build.
 
 Run this on a compute node:
 ```bash
-APPTAINER_FAKEROOT=1 bash scripts/bootstrap_flash_attention_overlay.sh
+bash scripts/bootstrap_flash_attention_scratch_venv.sh
 ```
 
 That script will:
-- create `platonic-init-fa.ext3` from the 50 GB overlay template if needed
-- install `uv` under `/ext3/uv`
+- install `uv` under `/scratch/$USER/uv`
 - install Python `3.12`
-- create `/ext3/venvs/platonic-init`
+- create `/scratch/$USER/venvs/platonic-init`
 - install the project runtime stack with PyTorch `2.4.x`
 - install the official FlashAttention `2.8.3` wheel
 - install this repo in editable mode
 - verify `flash_attention_2` via `python -m platonic_init.check_flash_attention --require-fa2`
 
-After the bootstrap succeeds, jobs can keep using the default
-`/ext3/venvs/platonic-init/bin/python`.
+The sbatch scripts default to `/scratch/$USER/venvs/platonic-init/bin/python`,
+so no extra environment variables are needed after bootstrap.
 
 2. Put your fixed synthetic corpus at:
 ```text

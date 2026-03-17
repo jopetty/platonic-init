@@ -11,7 +11,7 @@ alias tn='tmux new -s torch'
 alias sq='squeue -u "$USER"'
 alias so='sacct -u "$USER" --format=JobID,JobName%30,Partition,State,Elapsed,MaxRSS,ExitCode'
 alias si='sinfo'
-alias py='/ext3/venvs/platonic-init/bin/python'
+alias py='/scratch/$USER/venvs/platonic-init/bin/python'
 alias repo='cd /scratch/$USER/platonic-init'
 
 sj() {
@@ -28,7 +28,6 @@ slurm-log() {
 
 torch-shell() {
   singularity exec --nv \
-    --overlay /scratch/$USER/uv-env/uv-python.ext3:ro \
-    /share/apps/images/cuda12.3.2-cudnn9.0.0-ubuntu-22.04.4.sif \
+    /share/apps/images/cuda12.2.2-cudnn8.9.4-devel-ubuntu22.04.3.sif \
     /bin/bash
 }

@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/scratch/$USER/platonic-init}"
-OVERLAY="${OVERLAY:-/scratch/$USER/platonic-init-fa/platonic-init-fa.ext3}"
+OVERLAY="${OVERLAY:-}"
 IMAGE="${IMAGE:-/share/apps/images/cuda12.2.2-cudnn8.9.4-devel-ubuntu22.04.3.sif}"
 VENV_PYTHON="${VENV_PYTHON:-/scratch/$USER/venvs/platonic-init/bin/python}"
 HF_HOME="${HF_HOME:-/scratch/$USER/hf}"
