@@ -1,0 +1,173 @@
+{
+  "tensors": {
+    "transformer.h.0.attn.c_attn.bias": {
+      "component_relative_errors": [
+        1.2704591388448675e-15
+      ],
+      "mean_component_relative_error": 1.2704591388448675e-15
+    },
+    "transformer.h.0.attn.c_attn.weight": {
+      "component_relative_errors": [
+        1.8498801665545395e-15
+      ],
+      "mean_component_relative_error": 1.8498801665545395e-15
+    },
+    "transformer.h.0.attn.c_proj.bias": {
+      "component_relative_errors": [
+        1.7610092076868109e-15
+      ],
+      "mean_component_relative_error": 1.7610092076868109e-15
+    },
+    "transformer.h.0.attn.c_proj.weight": {
+      "component_relative_errors": [
+        4.3446157605795544e-16
+      ],
+      "mean_component_relative_error": 4.3446157605795544e-16
+    },
+    "transformer.h.0.ln_1.bias": {
+      "component_relative_errors": [
+        6.809971558920274e-16
+      ],
+      "mean_component_relative_error": 6.809971558920274e-16
+    },
+    "transformer.h.0.ln_1.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.h.0.ln_2.bias": {
+      "component_relative_errors": [
+        3.3307623356083584e-17
+      ],
+      "mean_component_relative_error": 3.3307623356083584e-17
+    },
+    "transformer.h.0.ln_2.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.h.0.mlp.c_fc.bias": {
+      "component_relative_errors": [
+        2.6391446039990488e-15
+      ],
+      "mean_component_relative_error": 2.6391446039990488e-15
+    },
+    "transformer.h.0.mlp.c_fc.weight": {
+      "component_relative_errors": [
+        8.379045643431492e-16
+      ],
+      "mean_component_relative_error": 8.379045643431492e-16
+    },
+    "transformer.h.0.mlp.c_proj.bias": {
+      "component_relative_errors": [
+        3.193400102841937e-16
+      ],
+      "mean_component_relative_error": 3.193400102841937e-16
+    },
+    "transformer.h.0.mlp.c_proj.weight": {
+      "component_relative_errors": [
+        2.5112886125273523e-15
+      ],
+      "mean_component_relative_error": 2.5112886125273523e-15
+    },
+    "transformer.h.1.attn.c_attn.bias": {
+      "component_relative_errors": [
+        6.934519389790838e-16
+      ],
+      "mean_component_relative_error": 6.934519389790838e-16
+    },
+    "transformer.h.1.attn.c_attn.weight": {
+      "component_relative_errors": [
+        1.85812983806249e-15
+      ],
+      "mean_component_relative_error": 1.85812983806249e-15
+    },
+    "transformer.h.1.attn.c_proj.bias": {
+      "component_relative_errors": [
+        1.7251531566449884e-15
+      ],
+      "mean_component_relative_error": 1.7251531566449884e-15
+    },
+    "transformer.h.1.attn.c_proj.weight": {
+      "component_relative_errors": [
+        5.285415156084403e-16
+      ],
+      "mean_component_relative_error": 5.285415156084403e-16
+    },
+    "transformer.h.1.ln_1.bias": {
+      "component_relative_errors": [
+        2.7427378393099684e-15
+      ],
+      "mean_component_relative_error": 2.7427378393099684e-15
+    },
+    "transformer.h.1.ln_1.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.h.1.ln_2.bias": {
+      "component_relative_errors": [
+        1.6169528968159058e-15
+      ],
+      "mean_component_relative_error": 1.6169528968159058e-15
+    },
+    "transformer.h.1.ln_2.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.h.1.mlp.c_fc.bias": {
+      "component_relative_errors": [
+        1.153393455408584e-15
+      ],
+      "mean_component_relative_error": 1.153393455408584e-15
+    },
+    "transformer.h.1.mlp.c_fc.weight": {
+      "component_relative_errors": [
+        1.606484566334388e-15
+      ],
+      "mean_component_relative_error": 1.606484566334388e-15
+    },
+    "transformer.h.1.mlp.c_proj.bias": {
+      "component_relative_errors": [
+        6.368788587644331e-16
+      ],
+      "mean_component_relative_error": 6.368788587644331e-16
+    },
+    "transformer.h.1.mlp.c_proj.weight": {
+      "component_relative_errors": [
+        1.021424380580573e-15
+      ],
+      "mean_component_relative_error": 1.021424380580573e-15
+    },
+    "transformer.ln_f.bias": {
+      "component_relative_errors": [
+        1.8950722006611812e-15
+      ],
+      "mean_component_relative_error": 1.8950722006611812e-15
+    },
+    "transformer.ln_f.weight": {
+      "component_relative_errors": [
+        0.0
+      ],
+      "mean_component_relative_error": 0.0
+    },
+    "transformer.wpe.weight": {
+      "component_relative_errors": [
+        0.9266999430713293
+      ],
+      "mean_component_relative_error": 0.9266999430713293
+    },
+    "transformer.wte.weight": {
+      "component_relative_errors": [
+        0.9997540635630707
+      ],
+      "mean_component_relative_error": 0.9997540635630707
+    }
+  },
+  "mean_relative_error": 0.06880192880837242
+}

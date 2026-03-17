@@ -8,14 +8,17 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import json
 import os
 import platform
+import sys
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import torch
+import torch.version
 from datasets import Dataset, IterableDataset
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, TrainerCallback, set_seed
@@ -31,7 +34,7 @@ from .data import (
     load_text_dataset,
     tokenizer_cache_key,
 )
-from .initialization import apply_platonic_init, sample_latent
+from .initialization import apply_analytic_delta_init
 from .support import dataset_cache_root, prepretraining_root, prepretraining_seed_dir
 
 
@@ -51,19 +54,36 @@ def resolve_attn_implementation(prefer_flash_attention_2: bool) -> str | None:
     except Exception as exc:
         warnings.warn(
             "Flash Attention 2 requested but unavailable in this runtime; "
-            f"falling back to default attention. Import failed with: {exc!r}",
+            "falling back to default attention. "
+            f"python={sys.version.split()[0]!s}, "
+            f"torch={torch.__version__!s}, "
+            f"torch_cuda={torch.version.cuda!s}, "
+            f"import failed with: {exc!r}",
             stacklevel=2,
         )
         return None
     return "flash_attention_2"
 
 
-def model_kwargs(*, bf16: bool, prefer_flash_attention_2: bool) -> dict[str, Any]:
+def resolve_model_dtype(*, bf16: bool, fp16: bool) -> torch.dtype | None:
+    """Return the configured runtime dtype for model construction/loading."""
+
+    if bf16:
+        return torch.bfloat16
+    if fp16:
+        return torch.float16
+    return None
+
+
+def model_kwargs(
+    *, bf16: bool, fp16: bool = False, prefer_flash_attention_2: bool
+) -> dict[str, Any]:
     """Build common Hugging Face model-loading kwargs."""
 
     kwargs: dict[str, Any] = {}
-    if bf16:
-        kwargs["torch_dtype"] = torch.bfloat16
+    dtype = resolve_model_dtype(bf16=bf16, fp16=fp16)
+    if dtype is not None:
+        kwargs["dtype"] = dtype
     attn_impl = resolve_attn_implementation(prefer_flash_attention_2)
     if attn_impl is not None:
         kwargs["attn_implementation"] = attn_impl
@@ -74,6 +94,7 @@ def build_model_from_config(
     model_name_or_path: str,
     *,
     bf16: bool = False,
+    fp16: bool = False,
     prefer_flash_attention_2: bool = True,
     vocab_size: int | None = None,
     bos_token_id: int | None = None,
@@ -83,6 +104,9 @@ def build_model_from_config(
     """Instantiate a causal LM from config, optionally overriding tokenizer shape."""
 
     cfg = AutoConfig.from_pretrained(model_name_or_path)
+    dtype = resolve_model_dtype(bf16=bf16, fp16=fp16)
+    if dtype is not None:
+        cfg.torch_dtype = dtype
     if vocab_size is not None:
         cfg.vocab_size = int(vocab_size)
     if bos_token_id is not None:
@@ -93,7 +117,11 @@ def build_model_from_config(
         cfg.pad_token_id = int(pad_token_id)
     return AutoModelForCausalLM.from_config(
         cfg,
-        **model_kwargs(bf16=bf16, prefer_flash_attention_2=prefer_flash_attention_2),
+        **model_kwargs(
+            bf16=bf16,
+            fp16=fp16,
+            prefer_flash_attention_2=prefer_flash_attention_2,
+        ),
     )
 
 
@@ -101,14 +129,44 @@ def load_pretrained_model(
     model_name_or_path: str,
     *,
     bf16: bool = False,
+    fp16: bool = False,
     prefer_flash_attention_2: bool = True,
 ):
     """Load a pretrained causal LM with the repo's runtime defaults."""
 
     return AutoModelForCausalLM.from_pretrained(
         model_name_or_path,
-        **model_kwargs(bf16=bf16, prefer_flash_attention_2=prefer_flash_attention_2),
+        **model_kwargs(
+            bf16=bf16,
+            fp16=fp16,
+            prefer_flash_attention_2=prefer_flash_attention_2,
+        ),
     )
+
+
+def build_initialized_state_dict(
+    model_name_or_path: str,
+    tokenizer,
+    *,
+    seed: int,
+    bf16: bool = False,
+    fp16: bool = False,
+    prefer_flash_attention_2: bool = True,
+) -> dict[str, torch.Tensor]:
+    """Instantiate a deterministic fresh model and return its state dict on CPU."""
+
+    set_seed(seed)
+    model = build_model_from_config(
+        model_name_or_path,
+        bf16=bf16,
+        fp16=fp16,
+        prefer_flash_attention_2=prefer_flash_attention_2,
+    )
+    model.resize_token_embeddings(len(tokenizer))
+    return {
+        key: value.detach().to(device="cpu").clone()
+        for key, value in model.state_dict().items()
+    }
 
 
 def resolve_max_length(model: torch.nn.Module, block_size: int) -> int:
@@ -172,6 +230,65 @@ def finish_wandb_run(report_to: list[str] | None) -> None:
     wandb.finish()
 
 
+def summarize_model(model: torch.nn.Module) -> dict[str, int]:
+    """Return total and trainable parameter counts for a model."""
+
+    total_params = sum(parameter.numel() for parameter in model.parameters())
+    trainable_params = sum(
+        parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+    )
+    return {
+        "total_params": int(total_params),
+        "trainable_params": int(trainable_params),
+    }
+
+
+def log_model_summary(
+    *,
+    model: torch.nn.Module,
+    model_name_or_path: str,
+    report_to: list[str] | None,
+    run_name: str | None = None,
+) -> None:
+    """Print and log a concise model summary at the start of training."""
+
+    summary = summarize_model(model)
+    total_params_m = summary["total_params"] / 1_000_000
+    trainable_params_m = summary["trainable_params"] / 1_000_000
+    prefix = f"[{run_name}] " if run_name else ""
+    print(
+        f"{prefix}Model: {model_name_or_path} | "
+        f"params={summary['total_params']:,} ({total_params_m:.2f}M) | "
+        f"trainable={summary['trainable_params']:,} ({trainable_params_m:.2f}M)",
+        flush=True,
+    )
+
+    if not report_to or "wandb" not in report_to:
+        return
+    try:
+        import wandb
+
+        if wandb.run is None:
+            return
+        wandb.config.update(
+            {
+                "model_name_or_path": model_name_or_path,
+                "model_total_params": summary["total_params"],
+                "model_trainable_params": summary["trainable_params"],
+            },
+            allow_val_change=True,
+        )
+        wandb.log(
+            {
+                "model/total_params": summary["total_params"],
+                "model/trainable_params": summary["trainable_params"],
+            },
+            step=0,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class TransferProjectionAssets:
     """Embedding assets used to project pretrained tokens into a new tokenizer."""
@@ -199,6 +316,7 @@ def load_transfer_projection_assets(
     model_name_or_path: str,
     *,
     bf16: bool = False,
+    fp16: bool = False,
     prefer_flash_attention_2: bool = True,
 ) -> TransferProjectionAssets:
     """Load source embeddings and vocab for token-by-token projection."""
@@ -206,6 +324,7 @@ def load_transfer_projection_assets(
     source_model = load_pretrained_model(
         model_name_or_path,
         bf16=bf16,
+        fp16=fp16,
         prefer_flash_attention_2=prefer_flash_attention_2,
     )
     source_tokenizer = load_saved_tokenizer(model_name_or_path)
@@ -448,9 +567,8 @@ def run_variant(
     learning_rate: float,
     block_size: int,
     seed: int,
+    model_init_seed: int | None = None,
     analytic_subspace: dict[str, Any] | None = None,
-    latent_seed: int = 0,
-    latent_scale: float = 1.0,
     report_to: list[str] | None = None,
     run_name: str | None = None,
     wandb_project: str | None = None,
@@ -472,7 +590,8 @@ def run_variant(
 ) -> dict[str, Any]:
     """Run one downstream initialization-evaluation job end-to-end."""
 
-    set_seed(seed)
+    init_seed = seed if model_init_seed is None else int(model_init_seed)
+    set_seed(init_seed)
     configure_wandb_env(
         report_to=report_to,
         wandb_project=wandb_project,
@@ -484,10 +603,12 @@ def run_variant(
     model = build_model_from_config(
         model_name_or_path,
         bf16=bf16,
+        fp16=fp16,
         prefer_flash_attention_2=prefer_flash_attention_2,
     )
     model.resize_token_embeddings(len(tokenizer))
     max_length = resolve_max_length(model, block_size)
+    set_seed(seed)
 
     copied_embedding_rows = 0
     if variant == "weight_transfer":
@@ -519,15 +640,10 @@ def run_variant(
                 prefer_flash_attention_2=prefer_flash_attention_2,
             )
 
-    if variant.startswith("platonic"):
+    if variant == "platonic_delta":
         if analytic_subspace is None:
             raise ValueError("analytic_subspace is required for platonic variants")
-        latent = None
-        if variant == "platonic_sampled":
-            latent = sample_latent(analytic_subspace, seed=latent_seed)
-        apply_platonic_init(
-            model, analytic_subspace, latent=latent, latent_scale=latent_scale
-        )
+        apply_analytic_delta_init(model, analytic_subspace)
 
     if variant != "weight_transfer":
         copied_embedding_rows = apply_prepretrain_projection(
@@ -583,6 +699,12 @@ def run_variant(
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         callbacks=callbacks or None,
+    )
+    log_model_summary(
+        model=model,
+        model_name_or_path=model_name_or_path,
+        report_to=report_to,
+        run_name=run_name,
     )
     initial_metrics = trainer.evaluate()
     train_result = trainer.train()
@@ -673,6 +795,7 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
     model = build_model_from_config(
         config.training.model_name_or_path,
         bf16=config.training.bf16,
+        fp16=config.training.fp16,
         prefer_flash_attention_2=config.training.prefer_flash_attention_2,
         vocab_size=len(tokenizer),
         bos_token_id=tokenizer.bos_token_id,
@@ -719,10 +842,35 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         processing_class=tokenizer,
         train_dataset=dataset,
     )
-    trainer.train()
+    log_model_summary(
+        model=model,
+        model_name_or_path=config.training.model_name_or_path,
+        report_to=config.training.report_to,
+        run_name=run_name,
+    )
+    train_result = trainer.train()
+    logged_losses = [
+        float(entry["loss"])
+        for entry in trainer.state.log_history
+        if entry.get("loss") is not None
+    ]
     finish_wandb_run(config.training.report_to)
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
+    metrics_path = Path(output_dir) / "prepretrain_metrics.json"
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "seed": int(seed),
+                "run_name": run_name,
+                "train_loss": float(train_result.training_loss),
+                "best_logged_loss": min(logged_losses) if logged_losses else None,
+                "global_step": int(trainer.state.global_step),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return Path(output_dir)
 
 

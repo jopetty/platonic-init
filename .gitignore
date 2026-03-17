@@ -225,6 +225,7 @@ artifacts/experiments/*/pretraining/*
 artifacts/experiments/*/analysis/basis_sweep/*
 !artifacts/experiments/*/analysis/*.json
 !artifacts/experiments/*/analysis/basis_sweep/*.json
+!artifacts/experiments/*/analysis/basis_sweep/analytic_subspace_*.pt
 !artifacts/experiments/*/pretraining/*.json
 configs/tmp/
 logs/*

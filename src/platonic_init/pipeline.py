@@ -21,13 +21,12 @@ from .data import (
     dataset_cache_key,
     load_init_eval_datasets,
     load_or_create_tokenized_dataset,
+    load_saved_tokenizer,
     tokenizer_cache_key,
 )
 from .initialization import (
-    build_summary,
-    fit_analytic_subspace,
+    fit_analytic_delta,
     load_state_dict,
-    tensorwise_pca,
 )
 from .rebasin import align_states_for_pca
 from .support import (
@@ -40,7 +39,13 @@ from .support import (
     pretraining_artifacts_dir,
     pretraining_init_eval_basis_root,
 )
-from .training import PretrainJob, load_transfer_projection_assets, run_variant, sweep
+from .training import (
+    PretrainJob,
+    build_initialized_state_dict,
+    load_transfer_projection_assets,
+    run_variant,
+    sweep,
+)
 
 STAGE_PREPRETRAIN = "prepretrain"
 STAGE_FIT_INITIALIZATIONS = "fit_initializations"
@@ -72,10 +77,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval-every", type=int, default=None)
-    parser.add_argument(
-        "--init-mode", type=str, default="sampled", choices=["mean", "sampled"]
-    )
-    parser.add_argument("--transfer-seed", type=int, default=0)
+    parser.add_argument("--transfer-seed", type=int, default=None)
     parser.add_argument("--skip-transfer", action="store_true")
     parser.add_argument("--skip-random", action="store_true")
     parser.add_argument("--skip-fits", action="store_true")
@@ -183,7 +185,7 @@ def write_pretraining_summaries(
     curves_payload = {
         "config": args.config,
         "fit_names": [job.label for job in jobs if job.analytic_subspace is not None],
-        "init_mode": args.init_mode,
+        "init_mode": "delta",
         "train_steps": args.eval_steps,
         "eval_every": args.eval_every,
         "seed": args.seed,
@@ -207,6 +209,89 @@ def default_checkpoint_dirs(cfg: ExperimentConfig) -> list[Path]:
     """Return expected seed checkpoint directories for the configured sweep."""
 
     return [prepretraining_seed_dir(cfg, seed) for seed in cfg.sweep.seeds]
+
+
+def _seed_from_checkpoint_dir(path: Path) -> int | None:
+    """Extract the numeric seed from a checkpoint directory name."""
+
+    match = re.fullmatch(r"seed_(\d+)", path.name)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _candidate_prepretrain_loss(seed_dir: Path) -> float | None:
+    """Return the best recorded pre-pretraining loss for one seed."""
+
+    summary_path = seed_dir / "prepretrain_metrics.json"
+    if summary_path.exists():
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            for key in ("best_logged_loss", "train_loss", "training_loss"):
+                value = payload.get(key)
+                if value is None:
+                    continue
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    continue
+
+    trainer_state_paths = [
+        seed_dir / "trainer_state.json",
+        *seed_dir.glob("checkpoint-*/trainer_state.json"),
+    ]
+    best_loss: float | None = None
+    for trainer_state_path in trainer_state_paths:
+        if not trainer_state_path.exists():
+            continue
+        try:
+            payload = json.loads(trainer_state_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for entry in payload.get("log_history", []):
+            value = entry.get("loss")
+            if value is None:
+                continue
+            try:
+                loss = float(value)
+            except (TypeError, ValueError):
+                continue
+            if best_loss is None or loss < best_loss:
+                best_loss = loss
+    return best_loss
+
+
+def select_best_prepretraining_seed(cfg: ExperimentConfig) -> int:
+    """Pick the pre-pretraining seed with the lowest recorded loss."""
+
+    candidates: list[tuple[float, int]] = []
+    for seed_dir in default_checkpoint_dirs(cfg):
+        seed = _seed_from_checkpoint_dir(seed_dir)
+        if seed is None or not seed_dir.exists():
+            continue
+        loss = _candidate_prepretrain_loss(seed_dir)
+        if loss is None:
+            continue
+        candidates.append((loss, seed))
+    if not candidates:
+        raise FileNotFoundError(
+            "Could not determine the best pre-pretraining seed from existing "
+            "checkpoints. Expected trainer_state.json or prepretrain_metrics.json."
+        )
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0][1]
+
+
+def resolve_reference_init_seed(cfg: ExperimentConfig) -> int:
+    """Return the configured reference seed or auto-select the best PPT seed."""
+
+    configured = cfg.stages.fit_initializations.reference_init_seed
+    if configured is not None:
+        return int(configured)
+    return select_best_prepretraining_seed(cfg)
 
 
 def infer_num_attention_heads(model_dir: Path) -> int | None:
@@ -272,6 +357,17 @@ def doctor_checks(
     """Validate that all required inputs exist for the requested stages."""
 
     issues: list[str] = []
+    selected_transfer_seed: int | None = None
+    if not args.skip_transfer:
+        try:
+            selected_transfer_seed = (
+                int(args.transfer_seed)
+                if args.transfer_seed is not None
+                else select_best_prepretraining_seed(cfg)
+            )
+        except FileNotFoundError as exc:
+            issues.append(str(exc))
+            selected_transfer_seed = None
     if run_fit_initializations:
         missing_ckpts = [
             path for path in default_checkpoint_dirs(cfg) if not path.exists()
@@ -282,11 +378,13 @@ def doctor_checks(
         return issues
 
     if not args.skip_transfer:
-        transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
+        if selected_transfer_seed is None:
+            return issues
+        transfer_seed_path = prepretraining_seed_dir(cfg, selected_transfer_seed)
         if not transfer_seed_path.exists():
             issues.append(
                 "Missing transfer checkpoint "
-                f"seed_{args.transfer_seed}: {transfer_seed_path}"
+                f"seed_{selected_transfer_seed}: {transfer_seed_path}"
             )
     if run_fit_initializations or not run_fit_jobs(args):
         return issues
@@ -316,7 +414,7 @@ def fit_initializations_stage(
     analysis_artifacts: Path,
     basis_sweep_artifacts: Path,
 ) -> dict[str, dict[str, object]]:
-    """Align seed checkpoints, run PCA, and fit analytic initialization blocks."""
+    """Align seed checkpoints and fit compact analytic deltas from a base init."""
 
     checkpoints = default_checkpoint_dirs(cfg)
     missing = [path for path in checkpoints if not path.exists()]
@@ -337,19 +435,34 @@ def fit_initializations_stage(
 
     merged_state = build_merged_state(states)
     torch.save(merged_state, basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME)
+    reference_init_seed = resolve_reference_init_seed(cfg)
+    reference_checkpoint = prepretraining_seed_dir(cfg, reference_init_seed)
+    if not reference_checkpoint.exists():
+        raise FileNotFoundError(
+            f"Missing reference checkpoint seed_{reference_init_seed}: "
+            f"{reference_checkpoint}"
+        )
 
-    subspace = tensorwise_pca(states, cfg.analysis)
-    torch.save(subspace, analysis_artifacts / "weight_subspace.pt")
-    (analysis_artifacts / "weight_subspace_summary.json").write_text(
-        json.dumps(build_summary(subspace), indent=2),
-        encoding="utf-8",
+    reference_tokenizer = load_saved_tokenizer(reference_checkpoint)
+    reference_state = build_initialized_state_dict(
+        str(reference_checkpoint),
+        reference_tokenizer,
+        seed=reference_init_seed,
+        bf16=cfg.training.bf16,
+        fp16=cfg.training.fp16,
+        prefer_flash_attention_2=cfg.training.prefer_flash_attention_2,
     )
 
     basis_subspaces: dict[str, dict[str, object]] = {}
-    fit_manifest: dict[str, dict[str, str]] = {}
+    fit_manifest: dict[str, dict[str, object]] = {}
     for block in selected_fit_blocks(cfg, args):
         fit_cfg = block.to_fit_config()
-        basis_subspace, basis_report = fit_analytic_subspace(subspace, fit_cfg)
+        basis_subspace, basis_report = fit_analytic_delta(
+            reference_state,
+            merged_state,
+            fit_cfg,
+            reference_init_seed=reference_init_seed,
+        )
         slug = fit_block_slug(block.name)
         torch.save(
             basis_subspace, basis_sweep_artifacts / f"analytic_subspace_{slug}.pt"
@@ -359,7 +472,12 @@ def fit_initializations_stage(
             encoding="utf-8",
         )
         basis_subspaces[block.name] = basis_subspace
-        fit_manifest[block.name] = {"slug": slug, "basis_type": fit_cfg.basis_type}
+        fit_manifest[block.name] = {
+            "slug": slug,
+            "basis_type": fit_cfg.basis_type,
+            "reference_init_seed": reference_init_seed,
+            "artifact_type": "analytic_delta",
+        }
 
     (basis_sweep_artifacts / "fit_blocks.json").write_text(
         json.dumps(fit_manifest, indent=2), encoding="utf-8"
@@ -397,6 +515,7 @@ def build_pretrain_jobs(
     basis_subspaces: dict[str, dict[str, object]],
     transfer_model_path: str | None,
     transfer_state_dict: dict[str, torch.Tensor] | None,
+    transfer_seed: int | None = None,
 ) -> list[PretrainJob]:
     """Build the list of downstream initialization variants to evaluate."""
 
@@ -413,19 +532,15 @@ def build_pretrain_jobs(
         )
 
     if run_fit_jobs(args):
-        platonic_variant = (
-            "platonic_mean" if args.init_mode == "mean" else "platonic_sampled"
-        )
         for block in selected_fit_blocks(cfg, args):
             jobs.append(
                 PretrainJob(
                     label=block.name,
-                    variant=platonic_variant,
-                    init_mode=args.init_mode,
+                    variant="platonic_delta",
+                    init_mode="delta",
                     out_name=block.name,
                     run_name=(
-                        f"{cfg.sweep.experiment_name}-init-eval-"
-                        f"{block.name}-{args.init_mode}"
+                        f"{cfg.sweep.experiment_name}-init-eval-" f"{block.name}-delta"
                     ),
                     analytic_subspace=basis_subspaces[block.name],
                 )
@@ -445,12 +560,26 @@ def build_pretrain_jobs(
                 out_name="weight_transfer",
                 run_name=(
                     f"{cfg.sweep.experiment_name}-init-eval-"
-                    f"weight-transfer-seed{args.transfer_seed}"
+                    f"weight-transfer-seed{transfer_seed}"
                 ),
                 transfer_model_path=transfer_model_path,
-                transfer_state_dict=transfer_state_dict,
             )
         )
+        if transfer_state_dict is not None:
+            jobs.append(
+                PretrainJob(
+                    label="rebasin_weight_transfer",
+                    variant="weight_transfer",
+                    init_mode="rebasin_transfer",
+                    out_name="rebasin_weight_transfer",
+                    run_name=(
+                        f"{cfg.sweep.experiment_name}-init-eval-"
+                        f"rebasin-weight-transfer-seed{transfer_seed}"
+                    ),
+                    transfer_model_path=transfer_model_path,
+                    transfer_state_dict=transfer_state_dict,
+                )
+            )
     return jobs
 
 
@@ -516,19 +645,32 @@ def pretrain_stage(
     transfer_model_path = None
     transfer_projection_assets = None
     transfer_state_dict = None
+    reference_init_seed = resolve_reference_init_seed(cfg)
+    selected_transfer_seed: int | None = None
     if not args.skip_transfer:
-        transfer_seed_path = prepretraining_seed_dir(cfg, args.transfer_seed)
+        selected_transfer_seed = (
+            int(args.transfer_seed)
+            if args.transfer_seed is not None
+            else select_best_prepretraining_seed(cfg)
+        )
+        transfer_seed_path = prepretraining_seed_dir(cfg, selected_transfer_seed)
         if not transfer_seed_path.exists():
             raise FileNotFoundError(
                 f"Missing transfer checkpoint for seed "
-                f"{args.transfer_seed}: {transfer_seed_path}"
+                f"{selected_transfer_seed}: {transfer_seed_path}"
             )
         transfer_model_path = str(transfer_seed_path)
         transfer_projection_assets = load_transfer_projection_assets(
             transfer_model_path,
             bf16=cfg.training.bf16,
+            fp16=cfg.training.fp16,
             prefer_flash_attention_2=cfg.training.prefer_flash_attention_2,
         )
+        merged_transfer_state_path = basis_sweep_artifacts / MERGED_TRANSFER_STATE_NAME
+        if merged_transfer_state_path.exists():
+            transfer_state_dict = torch.load(
+                merged_transfer_state_path, map_location="cpu"
+            )
 
     jobs = build_pretrain_jobs(
         cfg,
@@ -536,6 +678,7 @@ def pretrain_stage(
         basis_subspaces=basis_subspaces,
         transfer_model_path=transfer_model_path,
         transfer_state_dict=transfer_state_dict,
+        transfer_seed=selected_transfer_seed,
     )
     if not jobs:
         raise ValueError(
@@ -571,9 +714,8 @@ def pretrain_stage(
             learning_rate=cfg.training.learning_rate,
             block_size=cfg.training.block_size,
             seed=args.seed,
+            model_init_seed=reference_init_seed,
             analytic_subspace=job.analytic_subspace,
-            latent_seed=args.seed + 100,
-            latent_scale=1.0,
             report_to=cfg.training.report_to,
             run_name=job.run_name,
             wandb_project=cfg.training.wandb_project,

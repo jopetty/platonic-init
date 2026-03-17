@@ -48,7 +48,7 @@ class PipelineDoctorTests(unittest.TestCase):
             skip_transfer=False,
             skip_random=False,
             skip_fits=False,
-            init_mode="sampled",
+            init_mode="delta",
             transfer_seed=0,
             fit_names=["chebyshev", "fourier"],
         )
@@ -180,7 +180,7 @@ class PretrainJobTests(unittest.TestCase):
             skip_random=False,
             skip_fits=False,
             skip_transfer=False,
-            init_mode="sampled",
+            init_mode="delta",
             transfer_seed=0,
             fit_names=None,
         )

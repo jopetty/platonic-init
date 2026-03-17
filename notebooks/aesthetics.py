@@ -34,6 +34,7 @@ before each cell execution.
 from __future__ import annotations
 
 import colorsys
+import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, TypeAlias, TypeGuard, cast, overload
@@ -365,6 +366,88 @@ def update_dataset_palette(family: str, color: str, datasets: list[str]) -> Pale
     )
 
 
+def parse_initialization_degree(name: str) -> int | None:
+    match = re.search(r"_d(\d+)$", name)
+    return int(match.group(1)) if match else None
+
+
+def format_initialization_label(name: str) -> str:
+    if name == "random":
+        return "Baseline (Gaussian, σ=0.02)"
+    if name == "weight_transfer":
+        return "PPT"
+    degree = parse_initialization_degree(name)
+    if degree is not None:
+        return f"Plato (d={degree})"
+    return name.replace("_", " ").title()
+
+
+def initialization_palette(fit_names: list[str]) -> Palette:
+    set_palette(
+        key="initializations",
+        family="baseline",
+        color="Greys",
+        names=["random"],
+        display_name=lambda _family, name: format_initialization_label(name),
+    )
+    update_palette(
+        key="initializations",
+        family="transfer",
+        color="Purples",
+        names=["weight_transfer"],
+        display_name=lambda _family, name: format_initialization_label(name),
+    )
+    if fit_names:
+        canonical_fit_order = [
+            "chebyshev_d6",
+            "chebyshev_d8",
+            "chebyshev_d16",
+            "chebyshev_d24",
+            "chebyshev_d32",
+            "chebyshev_d64",
+            "chebyshev_d128",
+            "chebyshev_d256",
+            "chebyshev_d512",
+            "chebyshev_d1024",
+        ]
+        ordered_fit_names = [
+            name for name in canonical_fit_order if name in set(fit_names)
+        ] + [name for name in fit_names if name not in set(canonical_fit_order)]
+        oranges = list(
+            reversed(
+                sns.color_palette("Oranges", n_colors=len(canonical_fit_order) + 2)[
+                    1:-1
+                ]
+            )
+        )
+        fixed_plato_palette = {
+            name: color
+            for name, color in zip(canonical_fit_order, oranges, strict=True)
+        }
+        _set_palette_entries(
+            key="initializations",
+            family="plato",
+            family_palette={
+                name: fixed_plato_palette.get(name, _to_rgb_tuple("#ff8c42"))
+                for name in ordered_fit_names
+            },
+            replace=True,
+            display_name=lambda _family, name: format_initialization_label(name),
+        )
+    palette = PALETTES.get("initializations", {})
+    if not isinstance(palette, Mapping):
+        raise TypeError("PALETTES['initializations'] must be a mapping")
+    return dict(palette)
+
+
+def initialization_label_order(fit_names: list[str]) -> list[str]:
+    return [
+        format_initialization_label("random"),
+        format_initialization_label("weight_transfer"),
+        *[format_initialization_label(name) for name in fit_names],
+    ]
+
+
 update_model_palette(
     "Claude", "Oranges", ["Opus 4", "Sonnet 4", "Sonnet 3.7", "Haiku 3.5"]
 )
@@ -392,12 +475,13 @@ def set_figure_title(
     *,
     x: float = 0.0,
     y: float = 0.995,
+    subtitle_offset: float = 0.07,
     title_kwargs: Mapping[str, Any] | None = None,
     subtitle_kwargs: Mapping[str, Any] | None = None,
 ):
     """Add a left-aligned bold figure title and optional subtitle."""
 
-    title_y = y if subtitle is not None else y - 0.07
+    title_y = y if subtitle is not None else y - subtitle_offset
     title_text = fig.suptitle(
         title,
         x=x,
@@ -415,7 +499,7 @@ def set_figure_title(
             "va": "top",
         }
         subtitle_defaults.update(dict(subtitle_kwargs or {}))
-        subtitle_text = fig.text(x, y - 0.07, subtitle, **subtitle_defaults)
+        subtitle_text = fig.text(x, y - subtitle_offset, subtitle, **subtitle_defaults)
     return title_text, subtitle_text
 
 

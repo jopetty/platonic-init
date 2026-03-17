@@ -106,6 +106,7 @@ class PrepretrainStageConfig:
 class FitInitializationsStageConfig:
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     rebasin: RebasinConfig = field(default_factory=RebasinConfig)
+    reference_init_seed: int | None = None
     fit_blocks: list[AnalyticFitBlockConfig] = field(default_factory=list)
 
 

@@ -88,6 +88,17 @@ For each cohort, run stages 1-4 independently, then compare:
 
 ## Quickstart (uv)
 
+Tested GPU runtime:
+- Python `3.12.13`
+- PyTorch `2.4.1+cu121`
+- FlashAttention `2.8.3`
+- Official wheel:
+  `flash_attn-2.8.3+cu12torch2.4cxx11abiFALSE-cp312-cp312-linux_x86_64.whl`
+- Container image:
+  `/share/apps/images/cuda12.2.2-cudnn8.9.4-devel-ubuntu22.04.3.sif`
+- Overlay template:
+  `/share/apps/overlay-fs-ext3/overlay-50G-10M.ext3.gz`
+
 1. Install deps:
 ```bash
 uv sync
@@ -115,6 +126,28 @@ WANDB_ENTITY=...
 HF_TOKEN=...
 HUGGINGFACE_HUB_TOKEN=...
 ```
+
+## FlashAttention Scratch Venv Bootstrap
+
+On NYU Torch HPC, the supported path is to build the environment on `/scratch`
+with `uv`, using the official FlashAttention wheel instead of a source build.
+
+Run this on a compute node:
+```bash
+bash scripts/bootstrap_flash_attention_scratch_venv.sh
+```
+
+That script will:
+- install `uv` under `/scratch/$USER/uv`
+- install Python `3.12`
+- create `/scratch/$USER/venvs/platonic-init`
+- install the project runtime stack with PyTorch `2.4.x`
+- install the official FlashAttention `2.8.3` wheel
+- install this repo in editable mode
+- verify `flash_attention_2` via `python -m platonic_init.check_flash_attention --require-fa2`
+
+The sbatch scripts default to `/scratch/$USER/venvs/platonic-init/bin/python`,
+so no extra environment variables are needed after bootstrap.
 
 2. Put your fixed synthetic corpus at:
 ```text
@@ -164,10 +197,34 @@ uv run python -m platonic_init.pipeline --config configs/experiment.yaml --stage
 For the tiny-GPT2 paper-replication proxy on C4 using direct checkpoint transfer:
 ```bash
 uv run python scripts/generate_formal_language.py --language shuffle_dyck --k 64 --n-samples 20000 --max-depth 10 --output data/shuffle_dyck_k64_d10_20k.txt
-uv run python -m platonic_init.pipeline --config configs/experiment_tinygpt2_shuffle_dyck_c4_weight_transfer.yaml --stages prepretrain
-uv run python -m platonic_init.pipeline --config configs/experiment_tinygpt2_shuffle_dyck_c4_weight_transfer.yaml --stages pretrain --skip-fits
+uv run python -m platonic_init.pipeline --config configs/gpt2_tiny_c4_ppt_reproduction.yaml --stages prepretrain
+uv run python -m platonic_init.pipeline --config configs/gpt2_tiny_c4_ppt_reproduction.yaml --stages pretrain --skip-fits
 ```
 This transfer-only path now loads the selected pre-pretrained checkpoint directly for `weight_transfer`; it does not require analytic-fit artifacts.
+
+For Torch cluster runs, use the size-specific submit wrappers instead of setting
+`CONFIG_PATH` by hand:
+```bash
+scripts/submit_gpt2_tiny.sh prepretrain
+scripts/submit_gpt2_tiny.sh pretrain
+scripts/submit_gpt2_tiny.sh pretrain-fits
+
+scripts/submit_gpt2_medium.sh prepretrain
+scripts/submit_gpt2_medium.sh pretrain
+scripts/submit_gpt2_medium.sh pretrain-fits
+```
+Available wrappers:
+- `scripts/submit_gpt2_tiny.sh`
+- `scripts/submit_gpt2.sh`
+- `scripts/submit_gpt2_medium.sh`
+- `scripts/submit_gpt2_large.sh`
+- `scripts/submit_gpt2_xl.sh`
+
+Each wrapper accepts the stage name first, followed by optional extra `sbatch`
+args. Example:
+```bash
+scripts/submit_gpt2_medium.sh pretrain-fits --export=FIT_NAMES=chebyshev_d24
+```
 
 Configs are stage-scoped only. The canonical shape is:
 ```yaml
