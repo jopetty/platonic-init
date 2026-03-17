@@ -34,6 +34,7 @@ before each cell execution.
 from __future__ import annotations
 
 import colorsys
+import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, TypeAlias, TypeGuard, cast, overload
@@ -363,6 +364,59 @@ def update_dataset_palette(family: str, color: str, datasets: list[str]) -> Pale
         names=datasets,
         display_name=_dataset_display_name,
     )
+
+
+def parse_initialization_degree(name: str) -> int | None:
+    match = re.search(r"_d(\d+)$", name)
+    return int(match.group(1)) if match else None
+
+
+def format_initialization_label(name: str) -> str:
+    if name == "random":
+        return "Baseline (Gaussian, σ=0.02)"
+    if name == "weight_transfer":
+        return "PPT"
+    degree = parse_initialization_degree(name)
+    if degree is not None:
+        return f"Plato (d={degree})"
+    return name.replace("_", " ").title()
+
+
+def initialization_palette(fit_names: list[str]) -> Palette:
+    set_palette(
+        key="initializations",
+        family="baseline",
+        color="Greys",
+        names=["random"],
+        display_name=lambda _family, name: format_initialization_label(name),
+    )
+    update_palette(
+        key="initializations",
+        family="transfer",
+        color="Purples",
+        names=["weight_transfer"],
+        display_name=lambda _family, name: format_initialization_label(name),
+    )
+    if fit_names:
+        update_palette(
+            key="initializations",
+            family="plato",
+            color="Oranges",
+            names=list(reversed(fit_names)),
+            display_name=lambda _family, name: format_initialization_label(name),
+        )
+    palette = PALETTES.get("initializations", {})
+    if not isinstance(palette, Mapping):
+        raise TypeError("PALETTES['initializations'] must be a mapping")
+    return dict(palette)
+
+
+def initialization_label_order(fit_names: list[str]) -> list[str]:
+    return [
+        format_initialization_label("random"),
+        format_initialization_label("weight_transfer"),
+        *[format_initialization_label(name) for name in fit_names],
+    ]
 
 
 update_model_palette(
