@@ -11,7 +11,7 @@ set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/scratch/$USER/platonic-init}"
 OVERLAY="${OVERLAY:-/scratch/$USER/platonic-init-fa/platonic-init-fa.ext3}"
-IMAGE="${IMAGE:-/share/apps/images/cuda12.3.2-cudnn9.0.0-ubuntu-22.04.4.sif}"
+IMAGE="${IMAGE:-/share/apps/images/cuda12.2.2-cudnn8.9.4-devel-ubuntu22.04.3.sif}"
 VENV_PYTHON="${VENV_PYTHON:-/ext3/venvs/platonic-init/bin/python}"
 CONFIG_PATH="${CONFIG_PATH:-configs/experiment.yaml}"
 APP_CMD="${APP_CMD:-${VENV_PYTHON} -m platonic_init.pipeline --config ${CONFIG_PATH}}"
