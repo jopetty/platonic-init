@@ -6,9 +6,11 @@ import unittest
 from pathlib import Path
 from typing import cast
 
+import torch
 from datasets import Dataset
 
 from platonic_init.config import AnalyticFitBlockConfig, ExperimentConfig, load_config
+from platonic_init.optimizers import MuonOptimizerConfig, build_muon_param_groups
 from platonic_init.data import (
     CharTokenizer,
     dataset_cache_key,
@@ -146,6 +148,21 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "top-level 'stages'"):
                 load_config(path)
 
+    def test_load_config_rejects_unknown_optimizer_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "invalid_optimizer.yaml"
+            path.write_text(
+                (
+                    "stages:\n"
+                    "  prepretrain:\n"
+                    "    training:\n"
+                    "      optimizer_type: mystery\n"
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "optimizer_type"):
+                load_config(path)
+
 
 class DatasetCacheTests(unittest.TestCase):
     def test_tokenized_dataset_cache_round_trip(self) -> None:
@@ -232,6 +249,52 @@ class PipelineResultMergeTests(unittest.TestCase):
             [x["label"] for x in merged], ["random", "chebyshev", "weight_transfer"]
         )
         self.assertEqual(merged[-1]["final_eval_loss"], 6.5)
+
+
+class MuonOptimizerTests(unittest.TestCase):
+    class _TinyModel(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.embed = torch.nn.Embedding(8, 4)
+            self.proj = torch.nn.Linear(4, 4)
+            self.norm = torch.nn.LayerNorm(4)
+            self.lm_head = torch.nn.Linear(4, 8, bias=False)
+
+        def get_output_embeddings(self):
+            return self.lm_head
+
+    def test_build_muon_param_groups_separates_hidden_matrices(self) -> None:
+        model = self._TinyModel()
+        decay_names = {"embed.weight", "proj.weight", "lm_head.weight"}
+        groups = build_muon_param_groups(
+            model,
+            decay_parameter_names=decay_names,
+            config=MuonOptimizerConfig(
+                adam_learning_rate=3e-4,
+                adam_beta1=0.9,
+                adam_beta2=0.95,
+                adam_epsilon=1e-8,
+                muon_learning_rate=0.02,
+                muon_momentum=0.95,
+                muon_ns_steps=5,
+                muon_nesterov=True,
+                weight_decay=0.01,
+            ),
+        )
+
+        self.assertEqual(len(groups), 3)
+        self.assertTrue(groups[0]["use_muon"])
+        self.assertEqual(groups[0]["params"], [model.proj.weight])
+        self.assertFalse(groups[1]["use_muon"])
+        self.assertCountEqual(
+            groups[1]["params"],
+            [model.embed.weight, model.lm_head.weight],
+        )
+        self.assertFalse(groups[2]["use_muon"])
+        self.assertCountEqual(
+            groups[2]["params"],
+            [model.proj.bias, model.norm.weight, model.norm.bias],
+        )
 
 
 if __name__ == "__main__":

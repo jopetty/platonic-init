@@ -22,7 +22,16 @@ class TrainingConfig:
     warmup_steps: int | None = 500
     warmup_ratio: float = 0.03
     min_lr_rate: float = 0.1
+    optimizer_type: str = "adamw"
     weight_decay: float = 0.01
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.999
+    adam_epsilon: float = 1e-8
+    max_grad_norm: float = 1.0
+    muon_learning_rate: float = 0.02
+    muon_momentum: float = 0.95
+    muon_ns_steps: int = 5
+    muon_nesterov: bool = True
     save_steps: int = 100
     logging_steps: int = 10
     pretrain_packing: bool = True
@@ -219,6 +228,12 @@ def _normalize_fit_blocks(
 def _normalize_config(cfg: ExperimentConfig) -> ExperimentConfig:
     """Apply post-load config normalization rules."""
 
+    cfg.training.optimizer_type = str(cfg.training.optimizer_type).lower()
+    if cfg.training.optimizer_type not in {"adamw", "muon"}:
+        raise ValueError(
+            "stages.prepretrain.training.optimizer_type must be one of: "
+            "'adamw', 'muon'"
+        )
     cfg.stages.fit_initializations.fit_blocks = _normalize_fit_blocks(
         cfg.stages.fit_initializations.fit_blocks
     )

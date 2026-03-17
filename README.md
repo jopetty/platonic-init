@@ -117,6 +117,21 @@ Before runs with W&B enabled, authenticate once:
 uv run wandb login
 ```
 
+Optimizer settings live under `stages.prepretrain.training`. The default remains
+`optimizer_type: adamw`. To try Muon for hidden matrix weights while keeping
+embeddings, norms, biases, and the LM head on AdamW, set:
+```yaml
+stages:
+  prepretrain:
+    training:
+      optimizer_type: muon
+      learning_rate: 3.0e-4
+      muon_learning_rate: 2.0e-2
+      adam_beta2: 0.95
+      muon_momentum: 0.95
+```
+Those values are a starting point, not a tuned optimum for every experiment.
+
 All CLI entrypoints automatically load `.env` from the repository root (if present),
 so API keys can be provided there for W&B / Hugging Face / other SDKs.
 Example `.env`:

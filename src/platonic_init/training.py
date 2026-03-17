@@ -35,6 +35,7 @@ from .data import (
     tokenizer_cache_key,
 )
 from .initialization import apply_analytic_delta_init
+from .optimizers import MuonOptimizerConfig, MuonWithAuxAdam, build_muon_param_groups
 from .support import dataset_cache_root, prepretraining_root, prepretraining_seed_dir
 
 
@@ -539,6 +540,43 @@ class TrainStepTqdmCallback(TrainerCallback):
             self._bar.update(self._last_step)
         return control
 
+
+class PlatonicSFTTrainer(SFTTrainer):
+    """SFT trainer with optional Muon optimizer support."""
+
+    def __init__(
+        self,
+        *args,
+        optimizer_type: str = "adamw",
+        muon_config: MuonOptimizerConfig | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._optimizer_type = str(optimizer_type).lower()
+        self._muon_config = muon_config
+
+    def create_optimizer(self, model=None):
+        """Create the configured optimizer, defaulting to the parent implementation."""
+
+        if self._optimizer_type != "muon":
+            return super().create_optimizer(model=model)
+        if self.optimizer is not None:
+            return self.optimizer
+        if self._muon_config is None:
+            raise ValueError("Muon optimizer selected without muon_config")
+
+        opt_model = self.model if model is None else model
+        decay_parameters = self.get_decay_parameter_names(opt_model)
+        param_groups = build_muon_param_groups(
+            opt_model,
+            decay_parameter_names=set(decay_parameters),
+            config=self._muon_config,
+        )
+        if not param_groups:
+            raise ValueError("Muon optimizer could not find any trainable parameters")
+        self.optimizer = MuonWithAuxAdam(param_groups)
+        return self.optimizer
+
     def on_step_end(self, args, state, control, **kwargs):
         if self._bar is None:
             return control
@@ -619,6 +657,16 @@ def run_variant(
     warmup_steps: int | None = 500,
     warmup_ratio: float = 0.03,
     min_lr_rate: float = 0.1,
+    optimizer_type: str = "adamw",
+    weight_decay: float = 0.01,
+    adam_beta1: float = 0.9,
+    adam_beta2: float = 0.999,
+    adam_epsilon: float = 1e-8,
+    max_grad_norm: float = 1.0,
+    muon_learning_rate: float = 0.02,
+    muon_momentum: float = 0.95,
+    muon_ns_steps: int = 5,
+    muon_nesterov: bool = True,
     bf16: bool = False,
     fp16: bool = False,
     prefer_flash_attention_2: bool = True,
@@ -700,6 +748,7 @@ def run_variant(
         per_device_train_batch_size=batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         learning_rate=learning_rate,
+        weight_decay=weight_decay,
         report_to=report_to or [],
         run_name=run_name,
         save_strategy="no",
@@ -708,6 +757,11 @@ def run_variant(
         eval_strategy="steps",
         eval_steps=eval_every or max(10, train_steps // 5),
         seed=seed,
+        optim="adamw_torch",
+        adam_beta1=adam_beta1,
+        adam_beta2=adam_beta2,
+        adam_epsilon=adam_epsilon,
+        max_grad_norm=max_grad_norm,
         bf16=bf16,
         fp16=fp16,
         disable_tqdm=True,
@@ -728,13 +782,25 @@ def run_variant(
                 position=step_progress_position,
             )
         )
-    trainer = SFTTrainer(
+    trainer = PlatonicSFTTrainer(
         model=model,
         args=args,
         processing_class=tokenizer,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         callbacks=callbacks or None,
+        optimizer_type=optimizer_type,
+        muon_config=MuonOptimizerConfig(
+            adam_learning_rate=learning_rate,
+            adam_beta1=adam_beta1,
+            adam_beta2=adam_beta2,
+            adam_epsilon=adam_epsilon,
+            muon_learning_rate=muon_learning_rate,
+            muon_momentum=muon_momentum,
+            muon_ns_steps=muon_ns_steps,
+            muon_nesterov=muon_nesterov,
+            weight_decay=weight_decay,
+        ),
     )
     log_model_summary(
         model=model,
@@ -874,6 +940,11 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         gradient_accumulation_steps=config.training.gradient_accumulation_steps,
         learning_rate=config.training.learning_rate,
         weight_decay=config.training.weight_decay,
+        optim="adamw_torch",
+        adam_beta1=config.training.adam_beta1,
+        adam_beta2=config.training.adam_beta2,
+        adam_epsilon=config.training.adam_epsilon,
+        max_grad_norm=config.training.max_grad_norm,
         save_steps=config.training.save_steps,
         logging_steps=config.training.logging_steps,
         packing=config.training.pretrain_packing,
@@ -889,11 +960,23 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
         ),
     )
 
-    trainer = SFTTrainer(
+    trainer = PlatonicSFTTrainer(
         model=model,
         args=args,
         processing_class=tokenizer,
         train_dataset=dataset,
+        optimizer_type=config.training.optimizer_type,
+        muon_config=MuonOptimizerConfig(
+            adam_learning_rate=config.training.learning_rate,
+            adam_beta1=config.training.adam_beta1,
+            adam_beta2=config.training.adam_beta2,
+            adam_epsilon=config.training.adam_epsilon,
+            muon_learning_rate=config.training.muon_learning_rate,
+            muon_momentum=config.training.muon_momentum,
+            muon_ns_steps=config.training.muon_ns_steps,
+            muon_nesterov=config.training.muon_nesterov,
+            weight_decay=config.training.weight_decay,
+        ),
     )
     log_model_summary(
         model=model,
