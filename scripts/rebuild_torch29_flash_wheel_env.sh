@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="${REPO_ROOT:-/scratch/$USER/platonic-init}"
 OVERLAY="${OVERLAY:-/scratch/$USER/uv-env/uv-python.ext3}"
 IMAGE="${IMAGE:-/share/apps/images/cuda12.3.2-cudnn9.0.0-ubuntu-22.04.4.sif}"
-VENV_DIR="${VENV_DIR:-/ext3/venvs/platonic-init-torch29}"
+VENV_DIR="${VENV_DIR:-/ext3/venvs/platonic-init}"
 VENV_PYTHON="${VENV_PYTHON:-${VENV_DIR}/bin/python}"
 UV_CACHE_DIR="${UV_CACHE_DIR:-/scratch/$USER/.cache/uv}"
 TMPDIR="${TMPDIR:-/scratch/$USER/tmp}"
