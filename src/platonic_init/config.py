@@ -15,6 +15,7 @@ class TrainingConfig:
     block_size: int = 2048
     # If null, pre-pretraining trains for one full pass over the dataset.
     max_steps: int | None = None
+    reference_effective_batch_size: int | None = 8
     per_device_train_batch_size: int = 8
     gradient_accumulation_steps: int = 1
     learning_rate: float = 3e-4

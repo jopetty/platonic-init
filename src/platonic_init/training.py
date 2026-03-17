@@ -179,6 +179,40 @@ def resolve_max_length(model: torch.nn.Module, block_size: int) -> int:
     return max_length
 
 
+def effective_batch_size(
+    *, per_device_train_batch_size: int, gradient_accumulation_steps: int
+) -> int:
+    """Return the effective batch size for one optimizer step."""
+
+    return int(per_device_train_batch_size) * int(gradient_accumulation_steps)
+
+
+def resolve_scaled_train_steps(
+    *,
+    base_steps: int | None,
+    reference_effective_batch_size: int | None,
+    per_device_train_batch_size: int,
+    gradient_accumulation_steps: int,
+) -> int | None:
+    """Scale a reference step budget to preserve token budget across batch sizes."""
+
+    if base_steps is None:
+        return None
+    if reference_effective_batch_size is None:
+        return int(base_steps)
+
+    current_batch = effective_batch_size(
+        per_device_train_batch_size=per_device_train_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+    )
+    if current_batch <= 0:
+        raise ValueError(f"Effective batch size must be positive, got {current_batch}")
+    scaled_steps = round(
+        int(base_steps) * float(reference_effective_batch_size) / float(current_batch)
+    )
+    return max(1, int(scaled_steps))
+
+
 def scheduler_kwargs(
     *,
     warmup_steps: int | None,
@@ -807,18 +841,35 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
     model.resize_token_embeddings(len(tokenizer))
     max_length = resolve_max_length(model, config.training.block_size)
 
+    resolved_max_steps = resolve_scaled_train_steps(
+        base_steps=config.training.max_steps,
+        reference_effective_batch_size=config.training.reference_effective_batch_size,
+        per_device_train_batch_size=config.training.per_device_train_batch_size,
+        gradient_accumulation_steps=config.training.gradient_accumulation_steps,
+    )
     warmup_steps = config.training.warmup_steps
-    if warmup_steps is None and config.training.max_steps is not None:
-        warmup_steps = int(config.training.max_steps * config.training.warmup_ratio)
+    if warmup_steps is None and resolved_max_steps is not None:
+        warmup_steps = int(resolved_max_steps * config.training.warmup_ratio)
+
+    effective_bs = effective_batch_size(
+        per_device_train_batch_size=config.training.per_device_train_batch_size,
+        gradient_accumulation_steps=config.training.gradient_accumulation_steps,
+    )
+    print(
+        "Pre-pretraining budget: "
+        f"max_steps={resolved_max_steps}, "
+        f"effective_batch_size={effective_bs}, "
+        "reference_effective_batch_size="
+        f"{config.training.reference_effective_batch_size}",
+        flush=True,
+    )
 
     args = SFTConfig(
         output_dir=output_dir,
         dataset_text_field="text",
         max_length=max_length,
         num_train_epochs=1,
-        max_steps=config.training.max_steps
-        if config.training.max_steps is not None
-        else -1,
+        max_steps=resolved_max_steps if resolved_max_steps is not None else -1,
         per_device_train_batch_size=config.training.per_device_train_batch_size,
         gradient_accumulation_steps=config.training.gradient_accumulation_steps,
         learning_rate=config.training.learning_rate,
@@ -865,6 +916,8 @@ def run_single_seed(config: ExperimentConfig, seed: int, output_dir: str) -> Pat
             {
                 "seed": int(seed),
                 "run_name": run_name,
+                "max_steps": resolved_max_steps,
+                "effective_batch_size": effective_bs,
                 "train_loss": float(train_result.training_loss),
                 "best_logged_loss": min(logged_losses) if logged_losses else None,
                 "global_step": int(trainer.state.global_step),
