@@ -35,9 +35,14 @@ apptainer exec --fakeroot --nv \
     mkdir -p '${UV_CACHE_DIR}'
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH='${UV_ROOT}':\$PATH
-    uv python install --install-dir '${UV_PYTHON_INSTALL_DIR}' '${PYTHON_VERSION}'
+    uv python install --install-dir '${UV_PYTHON_INSTALL_DIR}' --force '${PYTHON_VERSION}'
+    PYTHON_BIN=\$(find '${UV_PYTHON_INSTALL_DIR}' -path '*/bin/python3.12' | head -n 1)
+    if [[ -z "\${PYTHON_BIN}" ]]; then
+      echo 'Failed to locate installed Python 3.12 in ${UV_PYTHON_INSTALL_DIR}' >&2
+      exit 1
+    fi
     rm -rf '${VENV_DIR}'
-    uv venv --python '${PYTHON_VERSION}' '${VENV_DIR}'
+    uv venv --python "\${PYTHON_BIN}" '${VENV_DIR}'
     source '${VENV_DIR}/bin/activate'
     uv pip install \
       'torch>=2.4,<2.5' \
