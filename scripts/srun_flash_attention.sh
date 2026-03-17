@@ -11,8 +11,11 @@ case "${MODE}" in
   install)
     TARGET_SCRIPT="./scripts/install_flash_attention.sh"
     ;;
+  rebuild29)
+    TARGET_SCRIPT="./scripts/rebuild_torch29_flash_wheel_env.sh"
+    ;;
   *)
-    echo "Usage: $0 [check|install] [extra srun args...]" >&2
+    echo "Usage: $0 [check|install|rebuild29] [extra srun args...]" >&2
     exit 2
     ;;
 esac
