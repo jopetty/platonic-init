@@ -398,11 +398,37 @@ def initialization_palette(fit_names: list[str]) -> Palette:
         display_name=lambda _family, name: format_initialization_label(name),
     )
     if fit_names:
-        update_palette(
+        canonical_fit_order = [
+            "chebyshev_d6",
+            "chebyshev_d8",
+            "chebyshev_d16",
+            "chebyshev_d24",
+            "chebyshev_d32",
+            "chebyshev_d64",
+            "chebyshev_d128",
+            "chebyshev_d256",
+            "chebyshev_d512",
+            "chebyshev_d1024",
+        ]
+        ordered_fit_names = [
+            name for name in canonical_fit_order if name in set(fit_names)
+        ] + [
+            name
+            for name in fit_names
+            if name not in set(canonical_fit_order)
+        ]
+        oranges = list(reversed(sns.color_palette("Oranges", n_colors=len(canonical_fit_order) + 2)[1:-1]))
+        fixed_plato_palette = {
+            name: color for name, color in zip(canonical_fit_order, oranges, strict=True)
+        }
+        _set_palette_entries(
             key="initializations",
             family="plato",
-            color="Oranges",
-            names=list(reversed(fit_names)),
+            family_palette={
+                name: fixed_plato_palette.get(name, _to_rgb_tuple("#ff8c42"))
+                for name in ordered_fit_names
+            },
+            replace=True,
             display_name=lambda _family, name: format_initialization_label(name),
         )
     palette = PALETTES.get("initializations", {})
