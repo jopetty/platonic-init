@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=paper-pretrain-fits
 #SBATCH --account=torch_pr_287_general
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:h200:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=04:00:00
