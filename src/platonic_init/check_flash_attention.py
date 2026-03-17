@@ -9,6 +9,7 @@ import platform
 import sys
 
 import torch
+import torch.version
 
 from .training import resolve_attn_implementation
 
@@ -75,7 +76,8 @@ def main() -> int:
 
     lines.append(
         "result: FlashAttention 2 is not available. "
-        "Most often this means flash-attn was installed without a usable CUDA extension."
+        "Most often this means flash-attn was installed without "
+        "a usable CUDA extension."
     )
     print("\n".join(lines))
     return 1 if args.require_fa2 else 0

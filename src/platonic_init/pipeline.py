@@ -239,7 +239,10 @@ def _candidate_prepretrain_loss(seed_dir: Path) -> float | None:
                 except (TypeError, ValueError):
                     continue
 
-    trainer_state_paths = [seed_dir / "trainer_state.json", *seed_dir.glob("checkpoint-*/trainer_state.json")]
+    trainer_state_paths = [
+        seed_dir / "trainer_state.json",
+        *seed_dir.glob("checkpoint-*/trainer_state.json"),
+    ]
     best_loss: float | None = None
     for trainer_state_path in trainer_state_paths:
         if not trainer_state_path.exists():
@@ -512,7 +515,7 @@ def build_pretrain_jobs(
     basis_subspaces: dict[str, dict[str, object]],
     transfer_model_path: str | None,
     transfer_state_dict: dict[str, torch.Tensor] | None,
-    transfer_seed: int | None,
+    transfer_seed: int | None = None,
 ) -> list[PretrainJob]:
     """Build the list of downstream initialization variants to evaluate."""
 
@@ -537,8 +540,7 @@ def build_pretrain_jobs(
                     init_mode="delta",
                     out_name=block.name,
                     run_name=(
-                        f"{cfg.sweep.experiment_name}-init-eval-"
-                        f"{block.name}-delta"
+                        f"{cfg.sweep.experiment_name}-init-eval-" f"{block.name}-delta"
                     ),
                     analytic_subspace=basis_subspaces[block.name],
                 )

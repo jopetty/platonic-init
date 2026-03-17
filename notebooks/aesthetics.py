@@ -412,14 +412,17 @@ def initialization_palette(fit_names: list[str]) -> Palette:
         ]
         ordered_fit_names = [
             name for name in canonical_fit_order if name in set(fit_names)
-        ] + [
-            name
-            for name in fit_names
-            if name not in set(canonical_fit_order)
-        ]
-        oranges = list(reversed(sns.color_palette("Oranges", n_colors=len(canonical_fit_order) + 2)[1:-1]))
+        ] + [name for name in fit_names if name not in set(canonical_fit_order)]
+        oranges = list(
+            reversed(
+                sns.color_palette("Oranges", n_colors=len(canonical_fit_order) + 2)[
+                    1:-1
+                ]
+            )
+        )
         fixed_plato_palette = {
-            name: color for name, color in zip(canonical_fit_order, oranges, strict=True)
+            name: color
+            for name, color in zip(canonical_fit_order, oranges, strict=True)
         }
         _set_palette_entries(
             key="initializations",
@@ -496,9 +499,7 @@ def set_figure_title(
             "va": "top",
         }
         subtitle_defaults.update(dict(subtitle_kwargs or {}))
-        subtitle_text = fig.text(
-            x, y - subtitle_offset, subtitle, **subtitle_defaults
-        )
+        subtitle_text = fig.text(x, y - subtitle_offset, subtitle, **subtitle_defaults)
     return title_text, subtitle_text
 
 

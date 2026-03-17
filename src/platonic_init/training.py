@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import torch.version
 from datasets import Dataset, IterableDataset
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, TrainerCallback, set_seed
@@ -315,6 +316,7 @@ def load_transfer_projection_assets(
     model_name_or_path: str,
     *,
     bf16: bool = False,
+    fp16: bool = False,
     prefer_flash_attention_2: bool = True,
 ) -> TransferProjectionAssets:
     """Load source embeddings and vocab for token-by-token projection."""
@@ -322,6 +324,7 @@ def load_transfer_projection_assets(
     source_model = load_pretrained_model(
         model_name_or_path,
         bf16=bf16,
+        fp16=fp16,
         prefer_flash_attention_2=prefer_flash_attention_2,
     )
     source_tokenizer = load_saved_tokenizer(model_name_or_path)
