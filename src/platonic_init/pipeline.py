@@ -294,6 +294,34 @@ def resolve_reference_init_seed(cfg: ExperimentConfig) -> int:
     return select_best_prepretraining_seed(cfg)
 
 
+def effective_batch_size(cfg: ExperimentConfig) -> int:
+    """Return the effective batch size for one optimizer step."""
+
+    return int(cfg.training.per_device_train_batch_size) * int(
+        cfg.training.gradient_accumulation_steps
+    )
+
+
+def resolve_pretrain_eval_steps(
+    cfg: ExperimentConfig, requested_steps: int | None
+) -> int:
+    """Scale downstream train steps to preserve token budget across batch sizes."""
+
+    if requested_steps is not None:
+        return int(requested_steps)
+
+    base_steps = int(cfg.stages.pretrain_eval.train_steps)
+    reference_batch = cfg.stages.pretrain_eval.reference_effective_batch_size
+    if reference_batch is None:
+        return base_steps
+
+    current_batch = effective_batch_size(cfg)
+    if current_batch <= 0:
+        raise ValueError(f"Effective batch size must be positive, got {current_batch}")
+    scaled_steps = round(base_steps * float(reference_batch) / float(current_batch))
+    return max(1, int(scaled_steps))
+
+
 def infer_num_attention_heads(model_dir: Path) -> int | None:
     """Infer GPT-style attention head count from a saved config file."""
 
@@ -690,6 +718,15 @@ def pretrain_stage(
     eval_root = pretraining_init_eval_basis_root(cfg)
     eval_root.mkdir(parents=True, exist_ok=True)
 
+    print(
+        "Downstream pretraining budget: "
+        f"train_steps={args.eval_steps}, "
+        f"effective_batch_size={effective_batch_size(cfg)}, "
+        "reference_effective_batch_size="
+        f"{cfg.stages.pretrain_eval.reference_effective_batch_size}",
+        flush=True,
+    )
+
     results: list[dict[str, object]] = []
     top_bar = tqdm(
         total=len(jobs),
@@ -711,6 +748,7 @@ def pretrain_stage(
             out_dir=eval_root / job.out_name,
             train_steps=args.eval_steps,
             batch_size=cfg.training.per_device_train_batch_size,
+            gradient_accumulation_steps=cfg.training.gradient_accumulation_steps,
             learning_rate=cfg.training.learning_rate,
             block_size=cfg.training.block_size,
             seed=args.seed,
@@ -756,8 +794,7 @@ def main() -> None:
     load_project_env()
     args = parse_args()
     cfg = load_config(args.config)
-    if args.eval_steps is None:
-        args.eval_steps = int(cfg.stages.pretrain_eval.train_steps)
+    args.eval_steps = resolve_pretrain_eval_steps(cfg, args.eval_steps)
     if args.eval_every is None:
         args.eval_every = int(cfg.stages.pretrain_eval.eval_every)
 

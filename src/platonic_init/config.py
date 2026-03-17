@@ -114,6 +114,7 @@ class FitInitializationsStageConfig:
 class PretrainEvalStageConfig:
     init_eval_data: InitEvalDataConfig = field(default_factory=InitEvalDataConfig)
     train_steps: int = 10000
+    reference_effective_batch_size: int | None = 8
     eval_every: int = 100
     logging_steps: int = 10
 
