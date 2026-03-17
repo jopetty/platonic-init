@@ -19,7 +19,7 @@ stages:
       prepretrain_char_tokenizer: false
       bf16: true
       fp16: false
-      prefer_flash_attention_2: false
+      prefer_flash_attention_2: true
       report_to: ["wandb"]
       run_name: gpt2-shuffle-dyck-c4
       wandb_project: platonic-init
