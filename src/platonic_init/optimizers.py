@@ -9,9 +9,7 @@ import torch
 import torch.distributed as dist
 
 
-def zeropower_via_newtonschulz5(
-    grad: torch.Tensor, *, steps: int
-) -> torch.Tensor:
+def zeropower_via_newtonschulz5(grad: torch.Tensor, *, steps: int) -> torch.Tensor:
     """Approximate the nearest orthogonal update with Newton-Schulz iterations."""
 
     if grad.ndim < 2:
@@ -42,7 +40,9 @@ def muon_update(
     """Build one Muon update from a gradient and momentum buffer."""
 
     momentum_buffer.lerp_(grad, 1.0 - float(momentum))
-    update = grad.lerp_(momentum_buffer, float(momentum)) if nesterov else momentum_buffer
+    update = (
+        grad.lerp_(momentum_buffer, float(momentum)) if nesterov else momentum_buffer
+    )
     if update.ndim == 4:
         update = update.view(len(update), -1)
     update = zeropower_via_newtonschulz5(update, steps=ns_steps)
@@ -85,7 +85,9 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                 if not params:
                     continue
                 pad_count = (-len(params)) % world_size
-                params_pad = params + [torch.empty_like(params[-1]) for _ in range(pad_count)]
+                params_pad = params + [
+                    torch.empty_like(params[-1]) for _ in range(pad_count)
+                ]
                 for base_index in range(0, len(params_pad), world_size):
                     param_index = base_index + rank
                     if param_index < len(params):
@@ -126,8 +128,8 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                 grad = param.grad
                 exp_avg.lerp_(grad, 1.0 - beta1)
                 exp_avg_sq.lerp_(grad.square(), 1.0 - beta2)
-                bias_correction1 = 1.0 - beta1**state["step"]
-                bias_correction2 = 1.0 - beta2**state["step"]
+                bias_correction1 = 1.0 - beta1 ** state["step"]
+                bias_correction2 = 1.0 - beta2 ** state["step"]
                 update = (exp_avg / bias_correction1) / (
                     (exp_avg_sq / bias_correction2).sqrt() + group["eps"]
                 )
@@ -171,7 +173,9 @@ def partition_muon_params(
     embedding_param_ids: set[int] = set()
     for module in model.modules():
         if isinstance(module, torch.nn.Embedding):
-            embedding_param_ids.update(id(param) for param in module.parameters(recurse=False))
+            embedding_param_ids.update(
+                id(param) for param in module.parameters(recurse=False)
+            )
 
     output_embedding = getattr(model, "get_output_embeddings", lambda: None)()
     if output_embedding is not None and hasattr(output_embedding, "weight"):

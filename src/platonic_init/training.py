@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import torch.nn as nn
 import torch.version
 from datasets import Dataset, IterableDataset
 from tqdm import tqdm
@@ -566,6 +567,8 @@ class PlatonicSFTTrainer(SFTTrainer):
             raise ValueError("Muon optimizer selected without muon_config")
 
         opt_model = self.model if model is None else model
+        if not isinstance(opt_model, nn.Module):
+            raise ValueError("Muon optimizer requires a concrete torch.nn.Module")
         decay_parameters = self.get_decay_parameter_names(opt_model)
         param_groups = build_muon_param_groups(
             opt_model,

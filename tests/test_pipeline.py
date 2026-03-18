@@ -10,13 +10,13 @@ import torch
 from datasets import Dataset
 
 from platonic_init.config import AnalyticFitBlockConfig, ExperimentConfig, load_config
-from platonic_init.optimizers import MuonOptimizerConfig, build_muon_param_groups
 from platonic_init.data import (
     CharTokenizer,
     dataset_cache_key,
     load_or_create_tokenized_dataset,
     tokenizer_cache_key,
 )
+from platonic_init.optimizers import MuonOptimizerConfig, build_muon_param_groups
 from platonic_init.pipeline import (
     _doctor_checks,
     _merge_results_by_label,
